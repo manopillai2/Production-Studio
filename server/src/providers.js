@@ -1,7 +1,10 @@
 // AI tool connections. Keys are stored server-side only (storage/studio.sqlite or server/.env)
 // and never sent to the browser. Paid generation stays OFF until you switch it on.
 import Anthropic from '@anthropic-ai/sdk';
+import fs from 'node:fs';
+import path from 'node:path';
 import { getSetting, setSetting } from './db.js';
+import { STORAGE_DIR } from './paths.js';
 import { langName, isEnglish } from './langs.js';
 
 export const TOOLS = [
@@ -24,7 +27,20 @@ export const TOOLS = [
     purpose: 'Animates a storyboard shot.' },
 ];
 
-const conn = () => getSetting('connections', { keys: {}, paidEnabled: null });
+// API keys live in storage/secrets.json (git-ignored), NEVER in the database — the database is pushed to git.
+const SECRETS = path.join(STORAGE_DIR, 'secrets.json');
+const readKeys = () => { try { return JSON.parse(fs.readFileSync(SECRETS, 'utf8')).keys || {}; } catch { return {}; } };
+const writeKeys = (keys) => fs.writeFileSync(SECRETS, JSON.stringify({ keys }, null, 2), 'utf8');
+const conn = () => ({ ...getSetting('connections', { paidEnabled: null }), keys: readKeys() });
+
+/** One-time move of keys saved by older versions from the database into secrets.json. Returns true if anything moved. */
+export function migrateKeysOutOfDb() {
+  const stored = getSetting('connections', null);
+  if (!stored?.keys || !Object.keys(stored.keys).length) return false;
+  writeKeys({ ...stored.keys, ...readKeys() });
+  setSetting('connections', { paidEnabled: stored.paidEnabled ?? null });
+  return true;
+}
 const keyValue = (k) => conn().keys?.[k] || process.env[k] || '';
 export const keyFor = keyValue;
 export const paidEnabled = () => {
@@ -51,16 +67,15 @@ export function providerStatus() {
 }
 
 export function saveConnection({ id, key, paidEnabled: pe }) {
-  const c = conn();
-  c.keys ||= {};
   if (id) {
     const t = TOOLS.find((x) => x.id === id);
     if (!t) throw new ProviderError('Unknown tool.');
-    if (key) c.keys[t.key] = String(key).trim();
-    else delete c.keys[t.key];
+    const keys = readKeys();
+    if (key) keys[t.key] = String(key).trim();
+    else delete keys[t.key];
+    writeKeys(keys);
   }
-  if (typeof pe === 'boolean') c.paidEnabled = pe;
-  setSetting('connections', c);
+  if (typeof pe === 'boolean') setSetting('connections', { paidEnabled: pe });
   return providerStatus();
 }
 

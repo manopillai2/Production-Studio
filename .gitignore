@@ -1,5 +1,10 @@
 node_modules/
 client/dist/
-storage/
 server/.env
 *.log
+
+# storage/ IS committed (database + media), except secrets and temporary files.
+storage/secrets.json
+storage/tmp/
+storage/*.sqlite-wal
+storage/*.sqlite-shm

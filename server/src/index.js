@@ -822,6 +822,14 @@ app.use((err, req, res, _next) => {
   res.status(status).json({ error: err.message || 'Something went wrong.' });
 });
 
+// Keys must never sit in the database (it is committed to git). Move them out and rewrite the
+// file so no old key bytes remain in free pages or the WAL.
+if (providers.migrateKeysOutOfDb()) {
+  db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
+  db.exec('VACUUM');
+  db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
+  console.log('  Moved API keys from the database to storage/secrets.json');
+}
 await seedIfEmpty();
 patchSampleSpecs();
 run(`DELETE FROM assets WHERE owner_type='version' AND owner_id NOT IN (SELECT id FROM item_versions)`); // tidy orphans
