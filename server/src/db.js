@@ -1,0 +1,184 @@
+// SQLite storage using Node's built-in node:sqlite (no native build step on Windows).
+import { DatabaseSync } from 'node:sqlite';
+import fs from 'node:fs';
+import { DB_PATH, STORAGE_DIR, MEDIA_DIR } from './paths.js';
+
+fs.mkdirSync(STORAGE_DIR, { recursive: true });
+fs.mkdirSync(MEDIA_DIR, { recursive: true });
+
+export const db = new DatabaseSync(DB_PATH);
+db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;');
+
+db.exec(`
+CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+
+CREATE TABLE IF NOT EXISTS episodes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  number INTEGER,
+  title TEXT NOT NULL,
+  title_ta TEXT DEFAULT '',
+  language TEXT DEFAULT 'both',
+  theme TEXT DEFAULT '',
+  learning_goals TEXT DEFAULT '',
+  target_duration REAL DEFAULT 60,
+  notes TEXT DEFAULT '',
+  master_audio_id INTEGER,
+  approved_lyrics_id INTEGER,
+  youtube_title TEXT DEFAULT '',
+  youtube_description TEXT DEFAULT '',
+  thumbnail_path TEXT,
+  caption_style TEXT DEFAULT '{}',
+  caption_language TEXT DEFAULT 'both',
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  kind TEXT NOT NULL,              -- character | location | prop
+  name TEXT NOT NULL,
+  description TEXT DEFAULT '',
+  notes TEXT DEFAULT '',           -- personality / lighting notes
+  blender_link TEXT DEFAULT '',
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS item_versions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  item_id INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+  label TEXT NOT NULL,
+  notes TEXT DEFAULT '',
+  status TEXT DEFAULT 'draft',     -- draft | approved
+  created_at TEXT DEFAULT (datetime('now')),
+  approved_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS assets (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  owner_type TEXT NOT NULL,        -- version | episode | shot | channel
+  owner_id INTEGER NOT NULL,
+  category TEXT NOT NULL,
+  label TEXT DEFAULT '',
+  file_path TEXT NOT NULL,         -- relative to storage/media
+  mime TEXT DEFAULT '',
+  width INTEGER, height INTEGER, duration REAL,
+  source TEXT DEFAULT 'import',    -- import | sample | blender | generated:<provider>
+  status TEXT DEFAULT 'draft',     -- draft | approved
+  notes TEXT DEFAULT '',
+  created_at TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_assets_owner ON assets(owner_type, owner_id);
+
+CREATE TABLE IF NOT EXISTS episode_cast (
+  episode_id INTEGER NOT NULL REFERENCES episodes(id) ON DELETE CASCADE,
+  item_id INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+  version_id INTEGER REFERENCES item_versions(id),
+  PRIMARY KEY (episode_id, item_id)
+);
+
+CREATE TABLE IF NOT EXISTS lyrics (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  episode_id INTEGER NOT NULL REFERENCES episodes(id) ON DELETE CASCADE,
+  title TEXT DEFAULT '',
+  sections TEXT DEFAULT '[]',      -- [{type,label,lines:[{ta,en,cue}]}]
+  status TEXT DEFAULT 'draft',
+  notes TEXT DEFAULT '',
+  source TEXT DEFAULT 'manual',
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS shots (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  episode_id INTEGER NOT NULL REFERENCES episodes(id) ON DELETE CASCADE,
+  position INTEGER DEFAULT 0,
+  title TEXT DEFAULT '',
+  lyric_cue TEXT DEFAULT '',
+  character_item_id INTEGER,
+  location_item_id INTEGER,
+  ref_asset_id INTEGER,
+  motion_notes TEXT DEFAULT '',
+  look TEXT DEFAULT 'Bright colorful 3D',
+  duration REAL DEFAULT 4,
+  approved_clip_id INTEGER,
+  trim_in REAL DEFAULT 0,
+  trim_out REAL,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS captions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  episode_id INTEGER NOT NULL REFERENCES episodes(id) ON DELETE CASCADE,
+  start REAL NOT NULL,
+  end REAL NOT NULL,
+  text TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS jobs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  type TEXT NOT NULL,
+  episode_id INTEGER,
+  status TEXT DEFAULT 'queued',    -- queued | running | done | error
+  progress REAL DEFAULT 0,
+  message TEXT DEFAULT '',
+  params TEXT DEFAULT '{}',
+  output TEXT DEFAULT '{}',
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+`);
+
+// ---- v0.2: staged projects, assistants, character development ----
+const addCol = (table, col, def) => { try { db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`); } catch { /* already exists */ } };
+addCol('item_versions', 'spec', `TEXT DEFAULT '{}'`);   // design spec developed with the assistant
+addCol('episodes', 'music_brief', `TEXT DEFAULT '{}'`); // {options:[...], chosen: n, source}
+db.exec(`
+CREATE TABLE IF NOT EXISTS chat_messages (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  episode_id INTEGER REFERENCES episodes(id) ON DELETE CASCADE,
+  scope TEXT NOT NULL,             -- lyrics | music | item:<id>
+  role TEXT NOT NULL,              -- user | assistant
+  content TEXT NOT NULL,
+  ref TEXT DEFAULT '{}',           -- e.g. {"lyrics_id": 4}
+  created_at TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_chat_scope ON chat_messages(scope, episode_id);
+CREATE TABLE IF NOT EXISTS cast_suggestions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  episode_id INTEGER NOT NULL REFERENCES episodes(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL,              -- character | location | prop
+  name TEXT NOT NULL,
+  description TEXT DEFAULT '',
+  appears_in TEXT DEFAULT '',
+  item_id INTEGER,                 -- matching library item, if any
+  status TEXT DEFAULT 'suggested', -- suggested | added | dismissed
+  source TEXT DEFAULT 'offline',
+  created_at TEXT DEFAULT (datetime('now'))
+);
+`);
+
+// v0.3: one language per project ("both" was Tamil + English → Tamil with English meaning).
+db.exec(`UPDATE episodes SET language='ta' WHERE language IS NULL OR language='both'`);
+db.exec(`UPDATE episodes SET caption_language='native' WHERE caption_language IN ('both','ta')`);
+
+// Any job left "running" by a previous server process can never finish.
+// (Meshy jobs are resumed instead — see meshy.js resumeJobs.)
+db.prepare(`UPDATE jobs SET status='error', message='Server restarted while this job was running. Start it again.' WHERE status IN ('queued','running') AND type NOT LIKE 'meshy-%'`).run();
+
+export const one = (sql, ...p) => db.prepare(sql).get(...p);
+export const all = (sql, ...p) => db.prepare(sql).all(...p);
+export const run = (sql, ...p) => db.prepare(sql).run(...p);
+
+export function tx(fn) {
+  db.exec('BEGIN');
+  try { const r = fn(); db.exec('COMMIT'); return r; }
+  catch (e) { db.exec('ROLLBACK'); throw e; }
+}
+
+export function getSetting(key, fallback = null) {
+  const r = one('SELECT value FROM settings WHERE key=?', key);
+  return r ? JSON.parse(r.value) : fallback;
+}
+export function setSetting(key, value) {
+  run('INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', key, JSON.stringify(value));
+}
