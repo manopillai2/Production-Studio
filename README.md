@@ -1,128 +1,197 @@
-# Rhymes Automation: local production studio (v0.2)
+# Rhymes Automation: production studio for original nursery-rhyme videos (v0.5)
 
-A local web app for making original Tamil + English nursery-rhyme videos for YouTube.
-Every video is a **project** that moves through four stages:
+One local app that takes you from lyrics to a finished MP4, built around a reusable **My World** library of characters, scenery, props, rigs and movement clips.
 
-A new project needs only a **name** and **one language**. English projects are English-only. For any other language (Tamil, Hindi, Telugu, …), the lyrics are sung in that language, and each line has an English meaning shown only for you (it isn't sung). Captions default to the sung language.
+**Projects** → **+ New project** (name and language) → five stages:
 
-1. **Lyrics.** Paste your lyrics, or describe the idea and the assistant writes them. Ask for tweaks ("catchier chorus", "fit it to 1:30"), set the video length, then **finalize** the lyrics. Use **Unlock to edit** to change finalized lyrics.
-2. **Characters & Scenery.** Click **Find & create from lyrics**. Claude reads the lyrics and creates every character, place and prop the song needs, each with a first design. It reuses matching locked designs from *My World* instead of making duplicates. If GPT Image is connected, it also creates the pictures. On each card, **Design / Redesign** opens a workshop with a design chat. Upload several reference photos and ask the assistant to "combine them into one design"; Claude sees the images. Then **🔒 Lock for lifetime**.
-   - **World style:** every new design and image follows the *World style guide* (editable in Stage 2 or in Channel Identity). Your locked designs are also sent as visual style references, so all creations share one recognisable look, and each new design is told to stay unique from the existing ones.
-3. **Music.** Get music-direction recommendations, pick one, and copy the ready-made prompt (plus lyrics) into your music AI, or use a connected tool. Import the takes and set the master song.
-4. **Assemble & Export.** One page that combines everything. Build the storyboard from the lyrics (one shot per line), copy each shot's animation prompt into Kling, Veo, Runway or Blender, and import and approve the clips. Then preview, time the captions, and export the MP4 (1080p or 4K) with SRT, thumbnail and YouTube text.
+| Stage | What happens |
+|---|---|
+| **1 · Lyrics** | Paste lyrics, or describe an idea and let the assistant write them. Ask it for edits; the lines it changed are highlighted for review. The target duration is a planning target only. **Approve Lyrics** sets the version that Stage 2 analyzes. |
+| **2 · Characters & Scenery** | Analyze the approved lyrics, search My World first (you confirm any reuse), and get one card per missing asset with an editable description. Each card offers four methods: **Build Locally** (offline), **Local AI** (optional), **Import Model**, or **Generate in Meshy** (paid, explicit). Inspect the result in a 3D viewer, edit it, regenerate it or approve it, then **Download & Save to My World**. Static assets only. |
+| **3 · Music & Vocals** | Upload a finished song, or music and vocals separately (then mix them). Play takes, approve one as the final audio, and see its real duration. Mark when each lyric line starts and ends, with room for an intro, breaks and an outro, then **Approve timing**. |
+| **4 · Animate & Assemble** | Propose a shot plan from the lyrics, timing and approved assets. Merge, split, add, reorder and edit shots: setting, characters, position/turn/scale, movement (rise, drift, bounce, twinkle, spin, sway, path), camera move and framing, and lighting. Click **Generate Preview** to watch the 3D sequence with the audio. Body-bending movement plays an animation clip on a rigged model: the app searches My World first, then lets you import one or request one from Meshy (explicit, paid). |
+| **5 · Preview & Export** | Watch the full video with audio, jump to individual shots, or go back to the timeline. **Export MP4** renders every frame from the same 3D scene and encodes it with the approved audio, with progress and errors shown. It also writes a captions `.srt` from the lyric timing. The project stays editable afterwards. |
 
-**Stack:** React 18 + Vite 6 (`client/`), Node + Express 4 (`server/`), SQLite via Node's built-in `node:sqlite`, local media in `storage/`, and FFmpeg for export.
+**Review flags:** when you approve a change that affects later stages (different lyrics, replaced audio, changed timing, an asset changed in Stage 2, or shots edited after an export), those stages show **Needs review**. Their saved work is kept. You check it and then click **Mark as reviewed**.
 
 ---
 
-## 1. Requirements (Windows)
+## Run it (Windows, PowerShell)
 
-Installed on this PC on 2026-11-23:
-
-```powershell
-winget install OpenJS.NodeJS.LTS   # Node 26+ (needs node:sqlite)
-winget install Gyan.FFmpeg         # ffmpeg + ffprobe
-```
-
-Use `npm.cmd` in PowerShell, because Windows' default script policy blocks `npm.ps1`.
-
-## 2. Setup (first time only)
+Needs Node.js 22+ (tested with 26) and FFmpeg: `winget install OpenJS.NodeJS.LTS` and `winget install Gyan.FFmpeg`. Open a new PowerShell window after installing.
 
 ```powershell
 cd "C:\Users\atcha\OneDrive\Desktop\Projects\Production Studio"
-npm.cmd install
-npm.cmd run setup
+npm.cmd install          # first time only
+npm.cmd run setup        # first time only (server + client packages)
+npm.cmd start            # builds the UI and starts the app
 ```
 
-## 3. Launch
-
-```powershell
-cd "C:\Users\atcha\OneDrive\Desktop\Projects\Production Studio"
-npm.cmd start
-```
-
-Open **http://localhost:5175** and stop with `Ctrl+C`.
+Open **http://localhost:5175** and stop the app with **Ctrl+C**. Use `npm.cmd`, because PowerShell blocks plain `npm` by default.
 For development with hot reload, run `npm.cmd run dev` and open http://localhost:5173.
 
-`npm.cmd run reset-sample` wipes **all** data back to the sample project. Stop the server before running it.
+## Test local 3D creation (offline: no GPU, no internet, no paid API)
 
-## 4. Connect AI tools (sidebar → AI Connections)
+The sample project **“Look Up at the Sky (sample)”** has already been made this way. To repeat it yourself:
 
-Paste API keys on the **AI Connections** page. Keys are stored only on this PC, in `storage/studio.sqlite`, and are never sent to the browser. You can also put them in `server/.env` (see `server/.env.example`).
-Nothing paid runs until you switch **Paid generation** on.
+1. **Projects → + New project.** Enter "Look Up at the Sky" and choose English.
+2. **Stage 1:** paste
+   `Look up, look up at the sky so blue, | Sunny rises over the hill` … (one line per row, in the format `line | action cue`), then click **Approve Lyrics**.
+3. **Stage 2:** click **Analyze lyrics (offline)**. You get cards for Sun, Cloud, Meadow and Hill. My World matches show a preview and ask you to confirm reuse.
+4. Click **+ Add asset** and fill it in:
+   - Kind: Character
+   - Name: `Pip the Sky Bunny`
+   - Description: `a small sky-blue bunny with one crescent-shaped right ear and one golden right front paw`
+5. Open the Pip card → **Build Locally**:
+   - The suggestion shows the template (Bunny) and what was applied: crescent right ear, gold shiny right paw, body colour.
+   - Adjust any slider or part colour; the preview updates live.
+   - Click **⚒ Build Locally**.
+6. Rotate and zoom the result. Try the other options:
+   - **Part colours** recolours one material only.
+   - **Version history** lets you restore an earlier revision.
+7. Do the same for Sunny and the Meadow. The meadow's trees, hills and cloud are separate objects: pick one, then move or recolour it.
+8. Click **✓ Approve**. The card shows **Approved · Not saved to My World**.
+9. Click **⬇ Download & Save to My World**. The highlight clears once the library copy is saved, and a `.glb` download is offered.
+10. Create a second project whose lyrics mention Pip, and run **Analyze**. Pip appears as a My World match; click **Confirm reuse**. Nothing is regenerated.
 
-| Tool | Stage | Status |
-|---|---|---|
-| Claude (`ANTHROPIC_API_KEY`) | Assistant in every stage (lyrics, cast suggestions, character design, music) | **Implemented** (model `claude-opus-5-5`). A bad key gives a readable error, but it hasn't yet been tested with a real key. |
-| GPT Image (`OPENAI_API_KEY`) | 2: character and scenery images | **Implemented, untested with a live key** (`gpt-image-1`, override with `OPENAI_IMAGE_MODEL`) |
-| Meshy (`MESHY_API_KEY`, paid plan needed) | 2: design images + 3D models | **Implemented**. It was tested end to end against a fake Meshy server, not yet against a live key. It creates design images (image-to-image with your references + locked designs as style, max 5) and 3D models (from images or from a Claude-written prompt). Jobs run in the background and resume after a restart. Results (.glb, .fbx, preview) are downloaded straight into the design, because Meshy deletes API results after 3 days. |
-| Eleven Music, Suno | 3: sing the lyrics | Placeholder. Use "📋 Prompt + lyrics" and import the result. |
-| Kling, Veo, Runway | 4: animate shots | Placeholder. Use each shot's "📋 Prompt" and import the clip. |
+The **Meshy calls logged** counter at the top of Stage 2 stays at **0** for all of the above.
 
-**Works without any AI key:**
-- Writing and pasting lyrics, with the length meter and versions.
-- The **Quick scan (offline)** of lyrics, a keyword list covering about 50 English and Tamil animal, place and prop words.
-- Music **Starter presets**, the 3D-model search links, the character workshop (references, spec, lock), the storyboard builder, the preview and the export.
+**What Build Locally can make:** templates for a **bunny, sun, moon, star, cloud, tree, hill and meadow** (the meadow is scenery containing editable trees, hills and clouds). Each has editable parameters and part colours. If a description needs something else ("elephant", "hat"…), the card says so and suggests Local AI, Import or Meshy. You can also pick a template by hand.
+Every saved asset keeps its **recipe and revision history**. Use **My World → item → Open for revision** to reopen it in a project; saving adds a new version to the same asset.
+Exported `.glb` files include their materials and any embedded textures (the hill, meadow and moon use procedural PNG textures).
 
-## 5. Rules the app enforces
+## World Style (My World → World Style)
 
-- The assistant never overwrites anything. Each lyrics change becomes a new version, and each design tweak goes into a draft.
-- Final lyrics are locked; to change them, duplicate and finalize the new version.
-- Locked character and scenery versions never change. Tweaking a locked design starts a new draft, and projects keep their pinned version until you click "Use newest locked version here".
-- Locking requires at least one reference file. When you lock, projects that were developing that item automatically switch to the locked version.
-- Importing a song take never changes the master track. Only approved takes and clips are used in the export.
+This is the single place for your world's visual rules: characters, faces, fur, scenery, colour, light and 3D quality. Each save keeps the previous version (the last 30), and you can restore any of them.
+- **Style Profile.** The app extracts structured rules from the document offline: palette roles (fur, muzzle, inner ear, iris, nose, foliage, stone, sun…), surface finish, proportions, face and fur construction, scenery and sky shapes. You can adjust them on the same page. Saving the document or the profile creates a new style version.
+- **Build Locally** applies the whole profile to every build:
+  - Colours default to your palette roles, and any colour named in a description snaps to the nearest palette colour.
+  - Satin fur, glossy eyes, oversized heads, plush cheeks, irises with catchlights, eyelids, a sculpted muzzle, tufts, inset ears and asymmetry.
+  - Petal-ray suns, lobed clouds, leaf-cluster trees, leaf-shaped terrain with a path, folded-petal flowers, landmark stones and layered hills that get cooler with distance.
+  - Each recipe stores the style snapshot it was built with, so rebuilds are reproducible.
+- **Uniqueness.** Every character is compared with your locked designs (My World and approved cards). If a character is too similar (≥ 84% alike), approval is blocked. **✨ Make unique** changes the fewest signature features needed, such as fur colour, an ear, freckles, eye shape or an accent paw.
+- **Local AI** builds whatever is in the reference image. **Use the Build Locally model as reference** gives it a World-Style starting image. Every reference is checked against the palette ("fits", "partly" or "off-style"), and the result gets the world's surface finish.
+- **Meshy.** The World Style summary, a palette line and a "clearly different from <your locked characters>" clause are attached automatically at submit, within 800 characters. The card shows exactly what will be sent.
+- **Claude** reads the full document when it analyzes lyrics, drafts descriptions or writes Meshy prompts, and in the lyrics and design assistants.
+- **Style changes.** Cards made with an older style version are flagged. **Apply current World Style** updates the recipe (colours you changed by hand are kept), or you can keep them as they are.
+- Character-specific details (for example Pip's own-right crescent ear and own-front-left golden paw) belong in that character's card description. Left and right always mean **the character's own** sides.
+- **Limits.** Uniqueness for Meshy, Local AI and imported models is guided (prompt clause, palette check), not measured geometrically. Only Build Locally designs get a similarity score.
 
-## 6. Try it
+## Optional: Local AI (Hunyuan3D-2)
 
-1. Open **Projects** and click **＋ New project**. Name it, pick the length (for example 1:00), and create it.
-2. In **Stage 1**, connect Claude, then type "an elephant and a monkey playing by the river, counting to five". The lyrics appear as a new version. Ask for tweaks, then click **🔒 Finalize these lyrics**. Without Claude, paste lyrics in the format `Tamil | English | cue`.
-3. In **Stage 2**, click **✨ Suggest from lyrics** (or **🔍 Quick scan**). For each suggestion, click **Start designing** (or **Reuse my 🔒 …** if you already have a matching locked character). In the workshop:
-   - Import references, or open the Sketchfab, Poly Haven or BlenderKit links to find an existing 3D model.
-   - Chat with the design assistant.
-   - Click **🔒 Lock for lifetime**.
-4. In **Stage 3**, click **✨ Recommend music** (or **Starter presets**), choose one, and copy the prompt plus lyrics into your music AI. Import the song, click ✔ Approve, then ★ Set as master.
-5. In **Stage 4**, click **✨ Build from final lyrics**. For each shot, click 📋 Prompt, then import the clip from your animation tool and approve it. Preview, click **From approved lyrics** for the captions, then export.
+> **This laptop (Intel Iris Xe, 7.6 GB RAM) can't use its GPU for it.** The "4 GB" Windows shows for Intel graphics is borrowed system memory, and PyTorch's Intel GPU backend doesn't support 12th-gen Iris Xe. It **can** run shape-only generation on the CPU. See [Local AI on a laptop without an NVIDIA GPU](#local-ai-on-a-laptop-without-an-nvidia-gpu-cpu-shape-only).
+> If you have a PC with an NVIDIA card, you can run the server there and point this app at it: `LOCAL_AI_URL=http://<that-pc-ip>:8081`, and start the server with `--host 0.0.0.0`. The app then only checks that the server is reachable.
 
-The sample project, *#1 Hop Hop Little Bunny*, has every stage done except the export, so you can see a finished pipeline.
+**Requirements and licence**, checked from the project's README, `api_server.py` and LICENSE in Nov 2026:
+- **Hardware:** an NVIDIA GPU with CUDA. Shape generation needs about 6 GB of video memory; shape plus texture needs about 16 GB. Integrated graphics can't run it on the GPU. Shape-only generation also runs on the CPU (slowly) through `tools/hunyuan3d_cpu_server.py`.
+- **What the server supports:**
+  - Image-to-3D: supported.
+  - Separate texture pass on an existing mesh: supported, but needs `--enable_tex`.
+  - Text-to-3D: disabled in the stock server, so it isn't offered.
+  - Multi-image input: needs the Hunyuan3D-2mv model and a custom server, so it isn't wired up.
+- **Licence:** Tencent Hunyuan 3D 2.0 Community License.
+  - Not licensed in the **EU, UK or South Korea**.
+  - Outputs may not be used to improve other AI models.
+  - AI-generated content must be identified when published (for example, YouTube's "altered or synthetic content" setting).
 
-## 7. Project layout
+### Local AI on a laptop without an NVIDIA GPU (CPU, shape only)
+
+`tools/hunyuan3d_cpu_server.py` runs Hunyuan3D-2mini (turbo) on the CPU in float32 and speaks the same API as `api_server.py`, so the app needs no settings: it detects the CPU server and shows **CPU mode**.
+
+- **Shape only.** Texturing needs CUDA-only extensions.
+- **Very slow on 8 GB of RAM.** The server needs about 9 GB of memory once loaded, so on this laptop (i5-1235U, 7.6 GB) Windows pages it to disk. In the first test (Nov 2026), image prep plus the first of 5 diffusion steps took about 21 minutes, and the run was stopped for low memory before it finished. Close VS Code, browsers and other apps before using it. A machine with 16 GB or more is far more practical.
+- One job at a time. Failures show in the app instead of hanging.
+
+One-time setup (Python 3.11 and Git; first run downloads about 3 GB of model weights into the Hugging Face cache):
+
+```powershell
+git clone --depth 1 https://github.com/Tencent-Hunyuan/Hunyuan3D-2 $env:USERPROFILE\hunyuan3d-2
+py -3.11 -m venv $env:USERPROFILE\hunyuan3d-2\.venv
+$py = "$env:USERPROFILE\hunyuan3d-2\.venv\Scripts\python.exe"
+& $py -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+& $py -m pip install "diffusers>=0.30,<0.36" "transformers>=4.45,<5" einops opencv-python numpy omegaconf tqdm trimesh pymeshlab pygltflib accelerate fastapi uvicorn rembg onnxruntime huggingface_hub safetensors pyyaml scikit-image
+```
+
+Start it (keep the window open while you use Local AI):
+
+```powershell
+.\tools\start-hunyuan3d-cpu.ps1                       # http://127.0.0.1:8081
+.\tools\start-hunyuan3d-cpu.ps1 --max_octree 192      # lighter, if you run out of memory
+```
+
+**Setup on a suitable PC** (Python 3.10+, CUDA build of PyTorch):
+
+```powershell
+git clone https://github.com/Tencent-Hunyuan/Hunyuan3D-2
+cd Hunyuan3D-2
+pip install -r requirements.txt
+pip install -e .
+# texture pass (optional, ≥16 GB VRAM): build the custom rasterizer per the repo's README
+python api_server.py --host 127.0.0.1 --port 8081            # shape only
+# python api_server.py --host 127.0.0.1 --port 8081 --enable_tex   # shape + texture
+```
+
+Then add to `server/.env` (create it from `.env.example`): `LOCAL_AI_URL=http://127.0.0.1:8081`, plus `LOCAL_AI_TEXTURE=true` if you started it with `--enable_tex`. Restart the app.
+The Local AI tab on each card shows each check (GPU, video memory, server) and which capabilities are available. Upload a reference image, then click **Generate shape**, then optionally **Refine texture**.
+
+## Meshy (optional, paid)
+
+Add your key in **AI Connections** and switch **Paid generation** on. Meshy rules, enforced by the server:
+- Only the **Generate in Meshy** button on one card (or **Request rig / Request clip / Browse motions / Check credits** in Stage 4) can reach Meshy.
+- Analyzing lyrics, searching My World, drafting prompts, opening Stage 2 and confirming reuse never do.
+- Every Meshy request is logged in the `meshy_calls` table and counted on Stage 2.
+- **One generation per project at a time.** There's no batch generation, no automatic retry and no automatic regeneration. After a restart the app only checks the status of tasks already submitted.
+- Results arrive as drafts. They're downloaded immediately, because Meshy deletes API results after 3 days.
+
+## What's verified (23–24 Nov 2026, this PC: Windows 11, integrated graphics, Node 26.13, FFmpeg 9.1)
+
+**Automated end-to-end run** on an isolated copy, with a fake Meshy server counting every request (Meshy deliberately left "active"):
+- **Offline analysis** found Sun, Cloud, Meadow and Hill.
+- **Pip** mapped to a crescent right ear and a gold shiny right paw, was built locally, and went through edit, rebuild and restore (3 revisions).
+- **Meadow:** tree 1 moved while tree 2 stayed untouched.
+- **Approve and save:** approving Pip, Sunny and the meadow showed "3 not saved"; saving Pip cleared only Pip's flag.
+- **Reopening the .glb:** the downloaded file reopens with its EarRight/PawRight nodes, the gold paw material and the ear-wiggle clip.
+- **Zero Meshy calls** for opening, analyzing, drafting, building, recolouring, approving and saving.
+- **Generate without the button** was refused with 0 calls.
+- **One at a time:** a second generation while one was running was refused (409). One click produced one job (shape + texture), and the result arrived as a draft.
+- **Reuse:** a second project found Pip in My World and reused the saved copy, with 0 Meshy calls for that project in the audit log.
+- **Timing and shots:** timing was approved against the 19.5 s audio, and the shot plan had Pip bouncing in line 4.
+- **Review flags:** replacing the audio flagged timing and shots, and re-approving changed lyrics flagged Stage 2, with all saved work kept.
+- **Local AI:** correctly reported as unavailable here, and requests are refused with a clear reason.
+
+**Real-browser run** (headless Edge, software WebGL):
+- Stage 2 showed 3D thumbnails and the interactive viewer.
+- Stage 4 preview: the audio clock and scene time matched (4.307 s vs 4.307 s), and seeking showed the right shot. After a full reload (reopening the project) they matched again (4.015 s vs 4.015 s).
+- Stage 5 exported a 1280×720 H.264 + AAC MP4 of 19.5 s in 95 s, plus an SRT, with no browser console errors.
+
+## Still needs a key, hardware, or more work
+
+| Item | Status |
+|---|---|
+| Meshy generation / rigging / clips | Built and tested against a **fake** Meshy server only. Needs your Meshy key for a real run. The shape of rig results is handled defensively but unverified. |
+| Local AI (Hunyuan3D-2) | Adapter, checks and capability display are built. **Needs an NVIDIA GPU (≥6 GB)** and the Python server, so it's untested here. |
+| Claude features (lyrics assistant, analysis with Claude, prompt drafting) | Built. Your key is connected, but I made no paid calls while testing. |
+| Music/vocal generation | Provider slots exist (Eleven Music, Suno) as labelled placeholders. Uploads work without them. |
+| Editing tools | **Working:** per-part colours (recipe colours for Build Locally assets, material recolouring for any .glb), version history, and restore. **Planned** (shown as such in the app): painted texture masks, masked retexturing, local geometry edits, remeshing and UV tools. The editor stores every edit as a revision so these can be added later. |
+| Bone rigs for Build Locally models | Procedural models are static plus a simple node clip (Pip's ear wiggle). A real skeleton comes from Meshy rigging or an imported rig. |
+| Export speed | About 5 s of render time per second of video at 720p on this laptop. 1080p is slower. |
+
+Removed in v0.5: the old clip-based storyboard and studio (Kling/Veo clip import), and the per-item Meshy image panel. These were replaced by the 3D shot plan and the card-based Stage 2.
+
+## Project layout
 
 ```
-server/src/index.js      Express routes (projects, stages, library, assistant, export, connections)
-server/src/providers.js  AI connections: Claude assistants, GPT Image, placeholders
-server/src/offline.js    lyrics keyword scan + music starter presets (no AI needed)
-server/src/model.js      project assembly, 4-stage progress, timeline
-server/src/export.js     FFmpeg export + SRT
-server/src/seed.js       sample project (+ --reset)
-server/src/db.js         SQLite schema (+ v0.2 migrations)
-client/src/pages/        Projects, Project (stepper), Library (My World), Channel, Connections, + building blocks (Music, Animation, Studio)
-client/src/stages/       StageLyrics, StageCast (+ workshop), StageMusic, StageAssemble
-client/src/ui.jsx        shared UI incl. the Assistant chat box
-storage/                 runtime data (git-ignored): studio.sqlite + media/
+server/src/index.js       Express app; projects, lyrics, audio, library, assistant routes; startup
+server/src/studio.js      Stages 2–5: asset cards, Build Locally / Local AI / Import / Meshy, revisions, recolour,
+                          Save to My World, mixing, line timing, 3D shots, rigs & clips, frame-based MP4 export
+server/src/procedural.js  Offline generator: templates, description → recipe mapper, recipe → .glb
+server/src/glb.js         .glb writer (materials, embedded PNG textures, node animations)
+server/src/glbedit.js     Read / recolour materials inside any .glb
+server/src/meshy.js       The only Meshy client (permits, audit log, one-at-a-time, no auto-submit)
+server/src/localai.js     Hunyuan3D-2 adapter + hardware/runtime checks
+server/src/samples.js     “Look Up at the Sky” sample (built with the procedural generator)
+server/src/model.js       Project assembly, five-stage progress, review flags
+client/src/stages/        StageLyrics, StageCast (+RecipeEditor), StageMusic (+TimingEditor), StageAnimate, StageExport
+client/src/engine/        SceneEngine (deterministic 3D renderer), ScenePlayer (audio-synced), Viewer3D, thumbnails
+storage/                  database + media (in git; API keys live in storage/secrets.json, which is ignored)
 ```
-
-## 8. Verified on 2026-11-23
-
-- **Lyrics:** a new project was created, and lyrics with Tamil + English lines were pasted and finalized.
-- **Assistant without a key:** the lyrics and design assistants reply "Claude is not connected…".
-- **Assistant with a bad key:** it replies "Claude rejected the API key…". The key was then removed again.
-- **Quick scan:** it found Elephant, Monkey, River, Mountain, Tree, Sun and Banana from the lyrics.
-- **Cast:** reusing Little Bunny pinned its locked v1. Elephant and River were added as in development.
-- **Locking:** locking was refused until a reference was added. After locking, the project pinned the version automatically. A later tweak created Draft 2, and the project stayed on the locked version.
-- **Music:** the starter presets came back and one was chosen.
-- **Storyboard:** building it from the lyrics created 4 shots, each with a character, location, cue and duration.
-- **UI:** all screens rendered in headless Edge.
-- **Cleanup:** the test project was deleted afterwards. The v0.1 export pipeline (1080p and 4K) is unchanged.
-
-## 9. Next steps
-
-- [ ] Test Claude and GPT Image with your real keys. Tune the assistant prompts in `server/src/providers.js` to your channel's voice.
-- [ ] Implement Eleven Music or Suno: send the final lyrics + the chosen `music_ai_prompt`, and save the result as a Draft take.
-- [ ] Implement Kling, Veo or Runway: send the shot's reference frame + `animationPrompt()` (client `pages/Animation.jsx`), poll the job, and save the result as a Draft clip.
-- [ ] Meshy: generate a 3D model from a locked design, then save the `.glb` into the character's draft.
-- [ ] GPT Image: use the character's reference images (the edits endpoint) so new images stay on-model.
-- [ ] Workshop: side-by-side compare of drafts inside Stage 2 (a compare view exists in My World → Characters).
-- [ ] Storyboard: let the assistant suggest motion notes and camera moves per shot.
-- [ ] Export: intro/outro with channel jingle + logo, loudness target, cancel a running job.
-
-Known limits: single user, local only, no authentication. API keys are stored unencrypted in the local SQLite database.

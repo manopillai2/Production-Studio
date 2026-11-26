@@ -111,10 +111,8 @@ export default function Channel() {
             <label className="check"><input type="checkbox" checked={c.thumbnail_template.showLogo} onChange={(e) => set('thumbnail_template.showLogo', e.target.checked)} /> Show logo</label>
           </div>
 
-          <h3>World style guide</h3>
-          <Field label="Every new character and scenery design follows this, together with your locked designs as visual references.">
-            <textarea rows={4} value={c.world_style || ''} onChange={(e) => set('world_style', e.target.value)} />
-          </Field>
+          <h3>World Style</h3>
+          <p className="small muted">Your world's visual rules now live in one place: <a href="#/world">My World → World Style</a>.</p>
 
           <h3>YouTube description template</h3>
           <Field label="Used for new episodes. {title} is replaced with the episode title.">

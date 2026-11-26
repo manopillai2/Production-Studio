@@ -3,10 +3,10 @@ import { api } from '../api.js';
 import { useStudio, useAction, EditField, Field, Badge, ImportButton, MediaPreview, Confirm, Placeholder } from '../ui.jsx';
 
 const CATS = {
-  character: [['reference', 'Reference image'], ['expression', 'Expression'], ['pose', 'Pose'], ['voice', 'Voice reference'], ['animation', 'Reusable animation'], ['render', 'Blender render'], ['blender', 'Blender asset file']],
-  location: [['view', 'Reference view'], ['reference', 'Mood / reference'], ['lighting', 'Lighting reference'], ['render', 'Blender render'], ['blender', 'Blender asset file']],
+  character: [['model3d', '3D model (.glb)'], ['reference', 'Reference image'], ['expression', 'Expression'], ['pose', 'Pose'], ['voice', 'Voice reference'], ['animation', 'Reusable animation'], ['render', 'Blender render'], ['blender', 'Blender asset file']],
+  location: [['model3d', '3D model (.glb)'], ['view', 'Reference view'], ['reference', 'Mood / reference'], ['lighting', 'Lighting reference'], ['render', 'Blender render'], ['blender', 'Blender asset file']],
 };
-const ACCEPT = { voice: 'audio/*', animation: 'video/*,.fbx,.glb,.blend', blender: '.blend,.glb,.gltf,.fbx,.obj,.usd,.usdz,.abc', render: 'image/*,video/*' };
+const ACCEPT = { model3d: '.glb', voice: 'audio/*', animation: 'video/*,.fbx,.glb,.blend', blender: '.blend,.glb,.gltf,.fbx,.obj,.usd,.usdz,.abc', render: 'image/*,video/*' };
 
 export default function Library({ kind }) {
   const { toast, health } = useStudio();
@@ -80,6 +80,8 @@ export default function Library({ kind }) {
               <div className="usage">
                 <b>Used in:</b> {item.usage.length ? item.usage.map((u) => <span key={u.episode_id} className="tag">#{u.number} {u.title} → {u.version_label}</span>) : <span className="muted">no projects yet</span>}
               </div>
+              <ReviseBox item={item} />
+              {item.versions.at(-1)?.spec?.recipe && <p className="small muted">Editable recipe stored: {item.versions.at(-1).spec.recipe.template} template{item.versions.at(-1).spec.revisions?.length ? ` · ${item.versions.at(-1).spec.revisions.length} revision(s) in its history` : ''}.</p>}
             </div>
 
             <div className="section-head">
@@ -125,6 +127,21 @@ export default function Library({ kind }) {
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+/** Reopen this saved asset (with its recipe) in a project to make a new revision. */
+function ReviseBox({ item }) {
+  const { episodes, openProject } = useStudio();
+  const [act, busy] = useAction();
+  const [ep, setEp] = useState('');
+  if (!item.versions.some((v) => v.assets.some((a) => a.category === 'model3d'))) return null;
+  return (
+    <div className="row wrap revise-box">
+      <span className="small">Revise this 3D asset in a project:</span>
+      <select value={ep} onChange={(e) => setEp(e.target.value)}><option value="">Choose project…</option>{episodes.map((e) => <option key={e.id} value={e.id}>#{e.number} {e.title}</option>)}</select>
+      <button className="btn small" disabled={!ep || busy} onClick={() => act(async () => { await api.post(`/api/items/${item.id}/revise`, { episode_id: Number(ep) }); openProject(Number(ep), 'cast'); }, 'Opened in Stage 2 — saving adds a new version to this asset')}>Open for revision</button>
     </div>
   );
 }

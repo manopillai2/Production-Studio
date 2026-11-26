@@ -1,6 +1,8 @@
 import { api } from '../api.js';
-import { useStudio, useAction, Assistant, Placeholder, useCopy } from '../ui.jsx';
+import { useStudio, useAction, Assistant, Placeholder, useCopy, ReviewBanner, mmss } from '../ui.jsx';
+import { fmtTime } from '../api.js';
 import { MusicInner } from '../pages/Music.jsx';
+import TimingEditor, { MixPanel } from './TimingEditor.jsx';
 
 export default function StageMusic() {
   const { episode, setEpisode, health, go } = useStudio();
@@ -16,8 +18,17 @@ export default function StageMusic() {
 
   const recommend = (mode) => act(async () => setEpisode((await api.post(`/api/episodes/${episode.id}/music/recommend`, { mode })).episode), 'Music directions ready');
 
+  const master = episode.master_audio;
   return (
     <div className="stack">
+      <ReviewBanner flagKey="timing" />
+      <div className="card duration-card">
+        <div className="row wrap">
+          <b>Final audio:</b>
+          {master ? <><span className="mono">{fmtTime(master.duration)}</span><span className="muted small">“{master.label}” · this is now the real length (the {mmss(episode.target_duration)} target in Stage 1 was only for planning)</span></>
+            : <span className="muted">none approved yet — planning target {mmss(episode.target_duration)}. Upload a finished song, or music and vocals separately, below.</span>}
+        </div>
+      </div>
       <div className="stage-grid">
         <div className="stack">
           <div className="card">
@@ -76,8 +87,10 @@ export default function StageMusic() {
         />
       </div>
 
-      <h3>Song takes & master track</h3>
+      <h3>Song takes & final audio</h3>
       <MusicInner />
+      <MixPanel />
+      <TimingEditor />
     </div>
   );
 }

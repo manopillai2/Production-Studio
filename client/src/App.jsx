@@ -6,6 +6,9 @@ import Project, { STAGES } from './pages/Project.jsx';
 import Channel from './pages/Channel.jsx';
 import Library from './pages/Library.jsx';
 import Connections from './pages/Connections.jsx';
+import MotionLibrary from './pages/MotionLibrary.jsx';
+import AnimationStudio from './pages/AnimationStudio.jsx';
+import WorldStyle from './pages/WorldStyle.jsx';
 import Icon, { AppMark } from './icons.jsx';
 
 const parseRoute = () => {
@@ -56,7 +59,12 @@ export default function App() {
   switch (route.page) {
     case 'project': pageEl = <Project />; title = episode ? episode.title : 'Project'; break;
     case 'characters': pageEl = <Library key="character" kind="character" />; title = 'My World · Characters'; break;
-    case 'locations': pageEl = <Library key="location" kind="location" />; title = 'My World · Scenery & Props'; break;
+    case 'rigged': pageEl = <Library key="rigged" kind="character" rigged />; title = 'My World · Characters with rig'; break;
+    case 'props': pageEl = <Library key="prop" kind="prop" />; title = 'My World · Props'; break;
+    case 'locations': pageEl = <Library key="location" kind="location" />; title = 'My World · Scenery'; break;
+    case 'motion': pageEl = <MotionLibrary />; title = 'My World · Rigs & Clips'; break;
+    case 'animstudio': pageEl = <AnimationStudio />; title = 'My World · Animation Studio'; break;
+    case 'world': pageEl = <WorldStyle />; title = 'My World · World Style'; break;
     case 'channel': pageEl = <Channel />; title = 'Channel Identity'; break;
     case 'connections': pageEl = <Connections />; title = 'AI Connections'; break;
     default: pageEl = <Projects />; title = 'Projects';
@@ -88,8 +96,13 @@ export default function App() {
               </div>
             )}
             <div className="nav-group">My World (locked library)</div>
+            {navLink('world', 'palette', 'World Style')}
             {navLink('characters', 'cast', 'Characters')}
-            {navLink('locations', 'scenery', 'Scenery & Props')}
+            {navLink('rigged', 'assemble', 'Characters with rig')}
+            {navLink('props', 'sparkle', 'Props')}
+            {navLink('locations', 'scenery', 'Scenery')}
+            {navLink('motion', 'assemble', 'Rigs & Clips')}
+            {navLink('animstudio', 'sparkle', 'Animation Studio')}
             <div className="nav-group">Settings</div>
             {navLink('channel', 'palette', 'Channel Identity')}
             {navLink('connections', 'plug', 'AI Connections')}

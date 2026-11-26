@@ -6,6 +6,7 @@ import path from 'node:path';
 import { getSetting, setSetting } from './db.js';
 import { STORAGE_DIR } from './paths.js';
 import { langName, isEnglish } from './langs.js';
+import { MOVE_CATALOG } from '../../client/src/engine/moveCatalog.js';
 
 export const TOOLS = [
   { id: 'claude', stage: 'assistant', label: 'Claude', key: 'ANTHROPIC_API_KEY', implemented: true, signup: 'https://console.anthropic.com/settings/keys',
@@ -173,6 +174,53 @@ Max 5 characters, 3 locations, 4 props.`;
   return claudeJSON(system, [], `Lyrics:\n${lyricsText}`);
 }
 
+const MESHY_RULES = `Meshy prompt rules: "meshy_prompt" max 700 characters, describes ONLY this single subject as a 3D model (shape, proportions, silhouette, colours, materials, signature features), in the studio's visual rules; no background, scene, camera or lighting words. "texture_prompt" max 500 characters: exact colours (hex), materials and surface details. Static pose only — no movement.`;
+
+/** Stage 2 analysis: everything the song needs, where it is used, and a Meshy prompt for each. (Claude only — never Meshy.) */
+/** The user's own ideas. They take priority over your own choices (but keep the world style). */
+const userIdeas = (label, text) => (String(text || '').trim()
+  ? `\nTHE USER'S OWN IDEAS FOR ${label} (follow them: they override your own choices wherever they conflict, but stay within the world style):\n${String(text).trim()}\n`
+  : '');
+
+export async function analyzeAssets({ lines, world, library, notes = {} }) {
+  const system = `You are the art director of a preschool nursery-rhyme channel. Read the numbered lyric lines and list every static 3D asset the animation needs: characters, scenery (locations) and props.
+${worldText(world)}${userIdeas('CHARACTERS', notes.characters)}${userIdeas('SCENERY (locations)', notes.scenery)}
+If the user describes or names a character or place, include it (even if the lyrics only hint at it) and design it the way they describe.
+My World library (reuse candidates): ${library || 'none'}. If a library item fits, set "reuse_name" to its exact name.
+For every asset give: "usages" = the line numbers (0-based) where it appears or should be visible; "signature_features" for recurring characters (1-2 unmistakable features, e.g. one crescent-shaped ear and one golden front paw); and a first Meshy prompt.
+${MESHY_RULES}
+Reply with ONLY JSON: {"items": [{"kind": "character"|"location"|"prop", "name": string, "description": one sentence, "usages": [int], "signature_features": string, "reuse_name": string|null, "meshy_prompt": string, "texture_prompt": string}]}. Max 6 characters, 3 locations, 5 props.`;
+  return claudeJSON(system, [], lines.map((l, i) => `${i}: ${l}`).join('\n'));
+}
+
+/** Decide which skeleton a character needs for Meshy rigging. Never calls Meshy. */
+export async function rigAdvisor({ card }) {
+  const system = `You are a 3D rigging supervisor for a preschool animated channel. Meshy can rig exactly two body plans:
+- "biped": stands and walks on two legs like a person (cartoon people, upright animal characters that walk on two legs, robots with two legs).
+- "quadruped": a four-legged animal that stands and walks on four legs (dog, cat, horse, cow, bunny/rabbit hopping on four paws, mouse on all fours, fox, lion, sheep…).
+- "none": anything Meshy cannot rig: no legs or not a body (sun, moon, star, cloud, flower, vehicle, fish, bird in flight, snake, insect, blob or face-only characters). These keep simple procedural motion instead.
+Decide from how THIS character is described and modelled (its description and Meshy prompt), not just the species: a bunny described hopping on four paws is "quadruped"; a bunny described standing upright and waving like a person is "biped". When it is a real animal and nothing says it stands upright, prefer how that animal naturally moves.
+Reply with ONLY JSON: {"rig_type": "biped"|"quadruped"|"none", "reason": one short sentence, "height_meters": typical standing height of this character in metres (number) or null}.`;
+  return claudeJSON(system, [], `Character: ${card.name}
+Description: ${card.description || '-'}
+Signature features: ${card.signature || '-'}
+Meshy prompt: ${card.prompt || '-'}
+The user's own notes about it (follow them, e.g. if they say it walks upright or on four legs): ${card.user_notes || '-'}`);
+}
+
+export async function refineMeshyPrompt({ card, world, instruction, notes, lyrics = [] }) {
+  const system = `You write Meshy text-to-3D prompts for a preschool nursery-rhyme channel.
+${worldText(world)}
+${userIdeas(card.kind === 'location' ? 'SCENERY in this song' : card.kind === 'character' ? 'CHARACTERS in this song' : 'this song', notes)}${userIdeas(`"${card.name}" specifically`, card.user_notes)}
+${MESHY_RULES}
+Reply with ONLY JSON: {"reply": one short sentence, "meshy_prompt": string, "texture_prompt": string, "signature_features": string}.`;
+  return claudeJSON(system, [], `Asset: ${card.name} (${card.kind}). Description: ${card.description || '-'}. Signature features: ${card.signature || '-'}.
+Lyric lines where it appears (design it to fit them): ${lyrics.length ? `\n${lyrics.map((l) => `- ${l}`).join('\n')}` : '(not in the current lyrics)'}
+Current Meshy prompt: ${card.prompt || '(none)'}
+Current texture prompt: ${card.texture_prompt || '(none)'}
+Request: ${instruction || 'Write the best Meshy prompts for this asset.'}`);
+}
+
 export async function designAssistant({ item, spec, history, message, channel, world, refImages = [], styleImages = [] }) {
   const isChar = item.kind === 'character';
   const system = `You are the ${isChar ? 'character' : 'set'} designer for "${channel.name}", a children's animated nursery-rhyme channel with ONE consistent, recognizable visual world.
@@ -192,6 +240,60 @@ Recommend music directions that fit the lyrics and a ${episode.target_duration |
 Reply with ONLY JSON: {"reply": short message, "options": [{"title", "style", "tempo_bpm": number, "key", "time_signature", "mood", "instruments": [string], "vocal" (who sings and how), "structure" (e.g. "intro 4 bars, verse, chorus x2, outro"), "music_ai_prompt" (a ready-to-paste prompt for an AI song generator, without the lyrics)}]}. Give 3 options unless asked otherwise.`;
   const ctx = `Lyrics:\n${lyricsText}\n\nCurrent options: ${JSON.stringify(brief?.options || [])}`;
   return claudeJSON(system, history, `${ctx}\n\nMy request: ${message || 'Recommend music for this song.'}`);
+}
+
+/** Stage 4: propose a shot plan in the scene engine's own shot format. The caller validates every field. */
+export async function shotDirector({ channel, episode, lines, assets, duration, world, message, current }) {
+  const system = `You are the director of a short 3D animated nursery-rhyme video for "${channel.name}" (children aged 1–5), in ${langName(episode.language)}.
+${world?.guide ? `World style: ${world.guide}\n` : ''}Plan the shots for the whole song using ONLY the approved 3D assets listed. Keep it calm, clear and readable for toddlers: one idea per shot, gentle motion, the singing subject easy to see. Vary the camera between shots, and repeat a look when the chorus repeats.
+Every shot MUST have a setting: it is the landscape the characters live in. The setting model is scaled to a landscape ${16} m across (setting_scale multiplies that, 0.5–2.5), centred on the origin; optional setting_rot_y (radians) turns it and setting_offset [x,y,z] shifts it (negative y sinks it). Keep the same setting across consecutive shots unless the lyrics move to a new place, and keep lighting consistent with the song (a night song stays night).
+Scene: units are metres. The camera looks at the origin from about z=9. Characters are 1.5 m tall at scale 1, props about 0.9 m, sky objects about 1.4 m. Ground actors stand ON the landscape surface automatically: give pos [x, 0, z] with x between -4 and 4 and z between -3 and 2 (y = height above the ground, normally 0). Sky actors (sun, moon, stars, clouds, birds…) use y 2.5–5 (height above the landscape) and z -3 to -6. Put characters where the landscape gives them something to do (on the hilltop, by the bridge, in the bedroom), group them so they read clearly, and turn them (rot_y) toward each other or the camera. Only stars and lights twinkle; characters sway, bounce, spin or stand.
+Only cast assets that fit the line being sung — but if the director's note asks for a character in a shot (for example "dogs visible in the background"), follow the note: it overrides the lyric usage list.
+
+WHAT EACH ACTOR CAN DO (three layers, all optional):
+1. Travel/placement motion (pick one per actor; whole-body movement across the scene):
+- none
+- rise {amount: metres it rises (1–5), duration: seconds, delay: seconds}
+- drift {dx: metres across the shot (-8–8), bob: 0–0.3, start: seconds to wait before moving}
+- bounce {to: [x,y,z] end point, height: 0.2–1.2, hops: 1–8, start}
+- twinkle {amount: 0.05–0.3, speed: 1–5}
+- spin {speed: radians/s, 0.3–3}
+- sway {amount: 0.03–0.2, speed: 0.5–3}
+- path {to: [x,y,z], start}
+- circle {center: [x,0,z], turns: 0.5–2, start}: walks around a point (e.g. circling the group); the radius is its distance from the centre
+A character with a rig and a walk/run clip walks (or runs) with real steps while it travels on path/drift/bounce, at its natural pace, then stops and stands with a breathing idle. Use "start" to make one character set off after another (e.g. the second walks once the first arrives).
+2. "actions": timed body actions for characters WITH a rig, each {"move": id, "at": seconds from the start of the shot, "seconds": length, "hand": "right"|"left" (optional), "repeats": n (optional)}. Only use the move ids listed for that asset. An action takes over the whole body while it plays, so schedule actions when the character is standing (after it arrives, or before it sets off). Give different characters different moves or different timings: never start the same move on two characters at the same moment.
+Move ids: ${MOVE_CATALOG.map((m) => `${m.id} (${m.rig === 'any' ? 'any rig' : m.rig === 'quad' ? 'four-legged' : 'two-legged'}: ${m.desc})`).join('; ')}.
+3. "look_at_card_id": the head keeps turning toward that character (rigged characters). "turn_to_card_id": the body turns to face that character once it is standing (after it arrives). Use these so characters react to each other.
+
+HARD LIMITS of this engine — do not pretend to do these; list what you could not do in "cannot":
+- Only the approved assets listed below exist. If the direction asks for characters that are not listed (e.g. a second mouse), say so in "cannot".
+- No facial expressions, smiling, blinking or eye movement; no mouth movement.
+- No finger/hand contact or inverse kinematics: characters can reach out a hand ("greet"), but two hands never actually lock; place them about 0.8–1 m apart facing each other.
+- Ears and tail move only on rigs that have those bones (four-legged rigs: tail wag, ear twitch). Two-legged rigs have no tail/ear bones.
+- No word-level or beat-level sync: only the line start/end times below. Fit the story to them.
+- The song is short: if the direction describes more scenes than lines/seconds allow, compress or merge them and say what was cut.
+Cameras: wide, tilt-up, pan {amount: 0.5–3}, dolly-in, closeup {target: actor index}, follow {target: actor index}, orbit, group (tracks and frames everyone standing). Optional on any camera: distance 0.6–1.6, height -1–2.
+Lighting: morning, day, sunset, night.
+Shots cover the lyric lines in order with no gaps or overlaps: the first shot starts at line 0, the last ends at line ${lines.length - 1}. A shot covers 1–4 lines.
+PROPOSE FIXES — ask, never assume: when part of the direction can't be done because something is missing from an EARLIER stage, add a proposal the user can approve. The app carries out approved proposals and then asks you to plan again. Types:
+- new_character {name, description (look, colours, clothing, personality; clearly different from the existing characters), rig: "biped"|"quadruped"}: a new character is generated in Stage 2 (paid Meshy model + rig + walk/run clips), approved and saved to My World. Use this for every missing character the direction names.
+- new_prop {name, description}: a new prop is generated in Stage 2 (paid Meshy). E.g. separate number props that can pop up one by one.
+- manual {stage: 1|2|3, title, steps}: something only the user can do, e.g. Stage 3 "record/upload a 10-second song" or Stage 1 "add lyric lines so each scene has its own line". Be specific.
+Do not propose things the engine can't do at all (blinking, facial expressions, hand contact): those stay in "cannot". Plan the shots NOW with what exists; proposals are for the next round.
+Reply with ONLY JSON: {"reply": two or three sentences on the overall approach (or on what you changed), "did": [short bullet strings: which parts of the direction you put into the plan, and where], "cannot": [short bullet strings: each part of the direction you could NOT do, and why], "proposals": [{"type": ..., "title": short, "why": which part of the direction it unlocks, ...fields}], "shots": [{"title": short, "line_from": int, "line_to": int, "setting_card_id": id of a location asset, "setting_scale": number, "setting_rot_y": number, "setting_offset": [x,y,z], "actors": [{"card_id": int, "pos": [x,y,z], "rot_y": radians, "scale": number, "motion": {"type": ..., ...params}, "actions": [{"move": id, "at": s, "seconds": s}], "look_at_card_id": int, "turn_to_card_id": int}], "camera": {"preset": ..., ...params}, "lighting": preset, "notes": one sentence of direction}]}`;
+  const text = `Song length: ${duration ? `${duration.toFixed(1)} s` : 'unknown'}
+Lyric lines (index, timing if known, text, on-screen cue):
+${lines.map((l, i) => `${i}. ${l.start != null ? `[${l.start.toFixed(1)}–${l.end.toFixed(1)} s] ` : ''}${l.text}${l.en && l.en !== l.text ? ` (${l.en})` : ''}${l.cue ? `  [on screen: ${l.cue}]` : ''}`).join('\n')}
+
+Approved assets:
+${assets.map((a) => `card_id ${a.card_id}: ${a.name} (${a.kind})${a.kind === 'character' ? (a.body_rig ? ` [${a.body_rig === 'quadruped' ? 'four-legged' : 'two-legged'} rig${a.walk ? ', walk/run clip' : ', no walk clip (glides when travelling)'}; moves: ${a.moves.join(', ')}]` : ' [no rig: static model, travel motions only, no actions]') : ''}${a.usages?.length ? `, appears in lines ${a.usages.join(', ')}` : ''}${a.description ? ` — ${a.description}` : ''}`).join('\n')}
+
+${current ? `CURRENT SHOT PLAN (revise it: change only what the director's note asks for, keep everything else exactly — same shots, lines, settings, positions, motions, cameras and lighting):
+${JSON.stringify(current)}
+
+` : ''}${message ? `Director's note: ${message}` : 'Propose the best shot plan for this song.'}`;
+  return claudeJSON(system, [], text);
 }
 
 // ---------------- GPT Image ----------------

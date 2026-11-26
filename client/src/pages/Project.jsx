@@ -5,23 +5,26 @@ import { LanguageSelect } from '../langs.jsx';
 import StageLyrics from '../stages/StageLyrics.jsx';
 import StageCast from '../stages/StageCast.jsx';
 import StageMusic from '../stages/StageMusic.jsx';
-import StageAssemble from '../stages/StageAssemble.jsx';
+import StageAnimate from '../stages/StageAnimate.jsx';
+import StageExport from '../stages/StageExport.jsx';
 import Icon from '../icons.jsx';
 
 export const STAGES = [
   { key: 'lyrics', n: 1, label: 'Lyrics', icon: 'lyrics' },
   { key: 'cast', n: 2, label: 'Characters & Scenery', icon: 'cast' },
-  { key: 'music', n: 3, label: 'Music', icon: 'music' },
-  { key: 'assemble', n: 4, label: 'Assemble & Export', icon: 'assemble' },
+  { key: 'music', n: 3, label: 'Music & Vocals', icon: 'music' },
+  { key: 'animate', n: 4, label: 'Animate & Assemble', icon: 'assemble' },
+  { key: 'export', n: 5, label: 'Preview & Export', icon: 'projects' },
 ];
 
 export default function Project() {
   const { episode, route, openProject } = useStudio();
   const [showSettings, setShowSettings] = useState(false);
   if (!episode) return <div className="muted">Loading project…</div>;
-  const idx = Math.max(0, STAGES.findIndex((s) => s.key === route.stage));
+  const key = route.stage === 'assemble' ? 'animate' : route.stage; // old links
+  const idx = Math.max(0, STAGES.findIndex((s) => s.key === key));
   const stage = STAGES[idx];
-  const Stage = { lyrics: StageLyrics, cast: StageCast, music: StageMusic, assemble: StageAssemble }[stage.key];
+  const Stage = { lyrics: StageLyrics, cast: StageCast, music: StageMusic, animate: StageAnimate, export: StageExport }[stage.key];
 
   return (
     <div className="stack">
@@ -29,9 +32,9 @@ export default function Project() {
         {STAGES.map((s, i) => {
           const st = episode.progress.stages.find((x) => x.key === s.key);
           return (
-            <button key={s.key} className={`step ${i === idx ? 'current' : ''} ${st?.done ? 'done' : ''}`} onClick={() => openProject(episode.id, s.key)}>
-              <span className="step-no">{st?.done ? <Icon name="check" size={13} /> : s.n}</span>
-              <span className="step-text"><b><Icon name={s.icon} size={13} /> {s.label}</b><small>{st?.detail}</small></span>
+            <button key={s.key} className={`step ${i === idx ? 'current' : ''} ${st?.done ? 'done' : ''} ${st?.review ? 'review' : ''}`} onClick={() => openProject(episode.id, s.key)} title={st?.review ? `Needs review: ${st.review}` : ''}>
+              <span className="step-no">{st?.review ? '!' : st?.done ? <Icon name="check" size={13} /> : s.n}</span>
+              <span className="step-text"><b><Icon name={s.icon} size={13} /> {s.label}</b><small>{st?.review ? 'Needs review' : st?.detail}</small></span>
               <span className={`step-bar ${st?.done ? 'done' : i === idx ? 'current' : ''}`} />
             </button>
           );

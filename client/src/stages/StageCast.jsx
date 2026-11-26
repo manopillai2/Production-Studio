@@ -1,405 +1,504 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api.js';
-import { useStudio, useAction, Badge, ImportButton, MediaPreview, Confirm, Assistant, Placeholder, Field } from '../ui.jsx';
-import { MeshyPanel, useMeshyJobs } from './MeshyPanel.jsx';
+import { useStudio, useAction, Confirm, Placeholder, ReviewBanner } from '../ui.jsx';
+import Viewer3D, { Thumb3D } from '../engine/Viewer3D.jsx';
+import { thumbnail } from '../engine/three-common.js';
+import RecipeEditor from './RecipeEditor.jsx';
 
-const KIND_ICON = { character: '🐾', location: '🏞️', prop: '🧺' };
-const GROUPS = [['character', 'Characters'], ['location', 'Scenery'], ['prop', 'Props']];
-
-/** Best picture for a design: the newest generated design image, else the first reference. */
-export const coverOf = (assets = []) => {
-  const imgs = assets.filter((a) => a.mime?.startsWith('image/'));
-  return [...imgs].reverse().find((a) => a.source?.startsWith('generated')) || imgs[0] || null;
-};
+const KIND_LABEL = { character: 'Characters', location: 'Scenery', prop: 'Props' };
+const METHODS = [['procedural', 'Build Locally'], ['local_ai', 'Local AI'], ['import', 'Import Model'], ['meshy', 'Generate in Meshy']];
+export function cardStatus(c) {
+  if (c.status === 'approved' && !c.saved_at) return ['warn', 'Approved · Not saved to My World'];
+  if (c.status === 'approved') return ['ok', c.decision === 'reuse' ? 'Reused from My World' : 'Approved · Saved to My World'];
+  return { match: ['info', 'Match in My World — confirm'], draft: ['muted', 'Draft — review the suggestion'], generating: ['running', 'Generating…'], review: ['info', 'Result ready — review'], failed: ['error', 'Failed'] }[c.status] || ['muted', c.status];
+}
 
 export default function StageCast() {
   const { episode, setEpisode, refreshEpisode, health, toast } = useStudio();
-  const [lib, setLib] = useState([]);
-  const [world, setWorld] = useState(null);
-  const [sel, setSel] = useState(null);
-  const [imgRun, setImgRun] = useState(null);
+  const [cards, setCards] = useState([]);
+  const [open, setOpen] = useState(null);
+  const [templates, setTemplates] = useState([]);
+  const [calls, setCalls] = useState(null);
+  const [local, setLocal] = useState(null);
   const [act, busy] = useAction();
-  const workshopRef = useRef();
-  const st = (id) => health?.providers?.find((p) => p.id === id)?.state;
-  const claudeOn = st('claude') === 'active';
-  const imageOn = st('gptImage') === 'active';
-  const meshyOn = st('meshy') === 'active';
-  const finalLyrics = episode.lyrics.find((l) => l.id === episode.approved_lyrics_id);
-  const [rev, setRev] = useState(0);
-  const { jobs, refresh: kick } = useMeshyJobs(episode.cast.map((c) => c.item_id), (j) => {
-    refreshEpisode(); setRev((r) => r + 1);
-    toast(j.status === 'done' ? `Meshy: ${j.message}` : `Meshy failed: ${j.message}`, j.status === 'done' ? 'ok' : 'error');
-  });
-  const jobsFor = (id) => jobs.filter((j) => j.params?.item_id === id);
+  const claudeOn = health?.providers?.find((p) => p.id === 'claude')?.state === 'active';
+  const lines = useMemo(() => {
+    const l = episode.lyrics.find((x) => x.id === episode.approved_lyrics_id);
+    return l ? l.sections.flatMap((s) => s.lines).filter((x) => (x.en || x.ta || '').trim()) : [];
+  }, [episode]);
 
-  const loadLib = useCallback(() => Promise.all([api.get('/api/items').then(setLib), api.get('/api/world').then(setWorld)]), []);
-  useEffect(() => { loadLib(); }, [loadLib]);
-  const open = (itemId) => { setSel(itemId); setTimeout(() => workshopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60); };
-  const inCast = (id) => episode.cast.some((c) => c.item_id === id);
+  const load = useCallback(async () => {
+    const [c, m] = await Promise.all([api.get(`/api/episodes/${episode.id}/cards`), api.get('/api/meshy/calls')]);
+    setCards(c); setCalls(m.count);
+    return c;
+  }, [episode.id]);
+  useEffect(() => { load(); api.get('/api/procedural/templates').then(setTemplates); api.get('/api/localai/status').then(setLocal).catch(() => {}); }, [load]);
+  const generating = cards.some((c) => c.status === 'generating');
+  useEffect(() => { if (!generating) return; const t = setInterval(() => load().then(() => refreshEpisode()), 3000); return () => clearInterval(t); }, [generating, load, refreshEpisode]);
+  const update = (c) => { setCards((cs) => cs.map((x) => (x.id === c.id ? c : x))); refreshEpisode(); };
 
-  const createImages = async (items) => {
-    for (let i = 0; i < items.length; i++) {
-      setImgRun({ i: i + 1, n: items.length, name: items[i].name });
-      try { await api.post(`/api/items/${items[i].item_id}/generate-image`, {}); await refreshEpisode(); }
-      catch (e) { toast(`Image for ${items[i].name}: ${e.message}`, 'error'); break; }
-    }
-    setImgRun(null);
-  };
-  const find = (mode) => act(async () => {
-    const r = await api.post(`/api/episodes/${episode.id}/cast/suggest`, { mode });
-    setEpisode(r.episode); loadLib();
-    toast(`${r.created.length} new design${r.created.length === 1 ? '' : 's'} created · ${r.reused.length} reused from My World${r.source === 'offline' ? ' (offline scan)' : ''}`);
-    if (imageOn && r.created.length) await createImages(r.created);
-    else if (meshyOn && r.created.length) {
-      for (const c of r.created) await api.post(`/api/items/${c.item_id}/meshy/image`, {}).catch((e) => toast(`${c.name}: ${e.message}`, 'error'));
-      toast(`Meshy is creating ${r.created.length} design image(s) in the background`);
-      kick();
-    }
+  const analyze = (mode) => act(async () => {
+    const r = await api.post(`/api/episodes/${episode.id}/cards/analyze`, { mode });
+    setCards(r.cards); refreshEpisode(); load();
+    toast(`${r.cards.length} asset card(s) · ${r.source === 'claude' ? 'Claude' : 'offline'} analysis · Meshy calls made: ${r.meshy_calls}`);
   });
+  const unsaved = cards.filter((c) => c.status === 'approved' && !c.saved_at);
 
   return (
     <div className="stack">
+      <ReviewBanner flagKey="cast" />
       <div className="card">
         <div className="section-head">
           <div>
-            <h3>Characters & scenery for this song</h3>
-            <p className="muted small">
-              {finalLyrics ? <>Reads the final lyrics “{finalLyrics.title}”, </> : <span className="warn">Lyrics aren't finalized — reads the latest version, </span>}
-              creates everything the song needs with a first design in your world style, and reuses matching locked designs from My World.
-            </p>
+            <h3>Characters, scenery & props</h3>
+            <p className="muted small">Reads the <b>approved</b> lyrics, searches My World first, and drafts an editable suggestion for each missing asset. Nothing is generated until you click a method on a card.</p>
           </div>
           <div className="row wrap">
-            <button className="btn primary" disabled={busy || !!imgRun || !claudeOn} onClick={() => find('ai')} title={claudeOn ? '' : 'Connect Claude to use this'}>✨ Find & create from lyrics</button>
-            <button className="btn" disabled={busy || !!imgRun} onClick={() => find('offline')}>Quick scan (offline)</button>
+            <button className="btn primary" disabled={busy || !episode.approved_lyrics_id} onClick={() => analyze('offline')}>Analyze lyrics (offline)</button>
+            <button className="btn" disabled={busy || !claudeOn || !episode.approved_lyrics_id} title={claudeOn ? 'Uses Claude (paid) — never Meshy' : 'Connect Claude to use this'} onClick={() => analyze('ai')}>✨ Analyze with Claude</button>
+            <AddAsset onAdd={(b) => act(async () => { const c = await api.post(`/api/episodes/${episode.id}/cards`, b); setCards((cs) => [...cs, c]); setOpen(c.id); }, 'Asset card added')} />
           </div>
         </div>
-        {busy && !imgRun && <div className="hint">Reading the lyrics and designing… this can take 20–40 seconds.</div>}
-        {imgRun && <div className="hint">Creating images {imgRun.i}/{imgRun.n}: {imgRun.name}…</div>}
-        {!imageOn && !meshyOn && <div className="hint">Pictures: Claude writes the designs but can't draw. Connect Meshy (or GPT Image) in AI Connections to create the images automatically — or add your own reference images in each design.</div>}
+        {!episode.approved_lyrics_id && <div className="alert">Approve the lyrics in Stage 1 first — Stage 2 analyzes the approved version.</div>}
+        <div className="row wrap small muted">
+          <span className="pill ok" title="Every Meshy request is logged by the server">Meshy calls logged: {calls ?? '…'}</span>
+          <span>Analyzing, searching My World, drafting and opening this stage never contact Meshy.</span>
+          {local && <span className={`pill ${local.ready ? 'ok' : 'muted'}`} title={local.checks.map((c) => `${c.ok ? '✓' : '✗'} ${c.label}: ${c.detail}`).join('\n')}>Local AI: {local.ready ? 'ready' : 'not available on this PC'}</span>}
+        </div>
       </div>
 
-      <MeshyBar meshyOn={meshyOn} claudeOn={claudeOn} busy={busy} jobs={jobs}
-        onCreate={(body) => act(async () => {
-          const r = await api.post(`/api/episodes/${episode.id}/cast/new`, body);
-          setEpisode(r.episode); loadLib(); open(r.item_id);
-          if (claudeOn) {
-            toast('Claude is writing the design and Meshy prompts…');
-            await api.post(`/api/items/${r.item_id}/assistant`, { message: `Design ${body.name} from this idea: "${body.description}". Fill the full spec including the Meshy prompts (meshy_prompt and texture_prompt). Match my world style and locked designs, but make it unique.` })
-              .then(() => { refreshEpisode(); setRev((x) => x + 1); })
-              .catch((e) => toast(e.message, 'error'));
-          }
-        }, `${body.name} created — the Meshy panel is open below`)} />
+      <IdeasPanel episode={episode} setEpisode={setEpisode} />
 
-      <WorldStyle world={world} onSaved={loadLib} />
+      {unsaved.length > 0 && <div className="alert warn-strong">{unsaved.length} approved asset{unsaved.length > 1 ? 's are' : ' is'} not saved to My World yet: {unsaved.map((c) => c.name).join(', ')}. Use “Download & Save to My World” on {unsaved.length > 1 ? 'each card' : 'the card'}.</div>}
 
-      <div className="card">
-        <div className="section-head">
-          <h3>In this project <span className="muted small">· {episode.cast.filter((c) => c.locked).length}/{episode.cast.length} locked</span></h3>
-          <AddManual onAdd={(body) => act(async () => { const r = await api.post(`/api/episodes/${episode.id}/cast/new`, body); setEpisode(r.episode); loadLib(); open(r.item_id); }, `Started designing ${body.name}`)} />
-        </div>
-        {!episode.cast.length && <div className="empty">Nothing yet. Click <b>Find & create from lyrics</b>, reuse something from My World below, or add one manually.</div>}
-        {GROUPS.map(([kind, label]) => {
-          const list = episode.cast.filter((c) => c.kind === kind);
-          if (!list.length) return null;
-          return (
-            <div key={kind}>
-              <h4>{label}</h4>
-              <div className="design-grid">
-                {list.map((c) => {
-                  const img = coverOf(c.version?.assets);
-                  const spec = c.version?.spec || {};
-                  const run = jobsFor(c.item_id).find((j) => j.status === 'queued' || j.status === 'running');
-                  const has3d = c.version?.assets.some((a) => a.mime === 'model/gltf-binary');
-                  return (
-                    <div key={c.item_id} className={`design-card ${sel === c.item_id ? 'sel' : ''} ${c.locked ? 'locked' : ''}`}>
-                      <div className="design-img" onClick={() => open(c.item_id)}>
-                        {img ? <img src={img.url} alt="" /> : <span className="cast-ph">{KIND_ICON[c.kind]}<small>No image yet</small></span>}
-                        {run && <span className="job-overlay">Meshy · {run.type === 'meshy-3d' ? '3D' : 'image'} {Math.round(run.progress * 100)}%</span>}
-                        {has3d && <span className="badge-3d">3D</span>}
-                      </div>
-                      <div className="design-body">
-                        <div className="row"><b className="grow">{c.name}</b><Badge status={c.locked ? 'approved' : 'draft'} text={c.locked ? 'Locked' : 'In design'} /></div>
-                        <p className="design-desc">{spec.look || spec.description || c.description || 'No design yet — open it and describe it to the assistant.'}</p>
-                        <div className="row">
-                          <button className="btn small primary" onClick={() => open(c.item_id)}>{c.locked ? 'Redesign' : 'Design'}</button>
-                          <button className="btn small" title="Open the Meshy image / 3D panel" onClick={() => open(c.item_id)}>🧊 3D</button>
-                          <span className="grow" />
-                          <Confirm className="btn ghost tiny" text="Remove from project?" onYes={() => act(async () => { setEpisode(await api.put(`/api/episodes/${episode.id}/cast`, { item_id: c.item_id, remove: true })); if (sel === c.item_id) setSel(null); })}>Remove</Confirm>
-                        </div>
-                      </div>
+      {['character', 'location', 'prop'].map((kind) => {
+        const list = cards.filter((c) => c.kind === kind);
+        if (!list.length) return null;
+        return (
+          <div key={kind}>
+            <h4>{KIND_LABEL[kind]}</h4>
+            <div className="asset-grid">
+              {list.map((c) => {
+                const [cls, label] = cardStatus(c);
+                return (
+                  <button key={c.id} className={`asset-card ${open === c.id ? 'sel' : ''} ${c.status === 'approved' && !c.saved_at ? 'unsaved' : ''}`} onClick={() => setOpen(open === c.id ? null : c.id)}>
+                    <Thumb3D url={c.model_url || c.match?.model?.url} size={130} />
+                    <div className="asset-card-body">
+                      <b>{c.name}</b>
+                      <span className={`pill ${cls}`}>{label}</span>
+                      <small className="muted">{c.usages.length ? `Lines ${c.usages.map((i) => i + 1).join(', ')}` : 'Not in current lyrics'} · {METHODS.find((m) => m[0] === c.method)?.[1] || c.method}</small>
                     </div>
-                  );
-                })}
-              </div>
+                  </button>
+                );
+              })}
             </div>
-          );
-        })}
-      </div>
-
-      <LibraryStrip lib={lib.filter((i) => i.locked && !inCast(i.id))} onAdd={(item) => act(async () => { setEpisode(await api.put(`/api/episodes/${episode.id}/cast`, { item_id: item.id })); }, `${item.name} added from My World`)} />
-
-      <div ref={workshopRef}>
-        {sel && inCast(sel) && <Workshop key={sel} itemId={sel} world={world} onChanged={loadLib} onClose={() => setSel(null)} jobs={jobsFor(sel)} rev={rev} kick={kick} />}
-      </div>
-    </div>
-  );
-}
-
-/** Always-visible Meshy entry point: status, credits, and quick "create a character with Meshy". */
-function MeshyBar({ meshyOn, claudeOn, busy, jobs, onCreate }) {
-  const { go } = useStudio();
-  const [bal, setBal] = useState(null);
-  const [f, setF] = useState({ kind: 'character', name: '', description: '' });
-  const running = jobs.filter((j) => j.status === 'queued' || j.status === 'running');
-  useEffect(() => { if (meshyOn) api.get('/api/meshy/balance').then(setBal).catch(() => setBal(null)); }, [meshyOn, running.length]);
-  const ok = f.name.trim() && f.description.trim();
-  return (
-    <div className="card meshy meshy-bar">
-      <div className="section-head">
-        <div>
-          <h3>🧊 Meshy · 3D characters & scenery</h3>
-          <p className="muted small">Create a new character from your own prompt, or click <b>Design</b> on any card below to make its design image and 3D model.</p>
-        </div>
-        {meshyOn
-          ? <span className="pill ok">Connected{bal ? ` · ${bal.balance} credits left` : ''}{running.length ? ` · ${running.length} running` : ''}</span>
-          : <button className="btn primary" onClick={() => go('connections')}>Connect Meshy (add API key)</button>}
-      </div>
-      <div className="row wrap">
-        <select value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value })}>
-          <option value="character">Character</option><option value="prop">Prop</option><option value="location">Scenery</option>
-        </select>
-        <input style={{ width: 180 }} value={f.name} placeholder="Name, e.g. Mango Monkey" onChange={(e) => setF({ ...f, name: e.target.value })} />
-        <input className="grow" value={f.description} placeholder="Describe it, e.g. a cheeky little monkey who loves mangoes, wears a tiny red vest" onChange={(e) => setF({ ...f, description: e.target.value })}
-          onKeyDown={(e) => e.key === 'Enter' && ok && (onCreate(f), setF({ ...f, name: '', description: '' }))} />
-        <button className="btn primary" disabled={!ok || busy} onClick={() => { onCreate(f); setF({ ...f, name: '', description: '' }); }}>Create & open in Meshy</button>
-      </div>
-      <p className="muted small">{claudeOn ? 'Claude writes the design and the Meshy prompts in your world style; then you create the image and 3D model in the panel that opens.' : 'Connect Claude to have the Meshy prompts written for you.'}</p>
-    </div>
-  );
-}
-
-function WorldStyle({ world, onSaved }) {
-  const { refreshChannel } = useStudio();
-  const [open, setOpen] = useState(false);
-  const [text, setText] = useState('');
-  const [act, busy] = useAction();
-  useEffect(() => { if (world) setText(world.guide); }, [world]);
-  if (!world) return null;
-  return (
-    <div className="card world-card">
-      <div className="section-head">
-        <div>
-          <h3>🌍 World style <span className="muted small">· keeps every creation in one unique, consistent look</span></h3>
-          <p className="muted small">Every new design and image follows this guide and uses your {world.locked.length} locked design{world.locked.length === 1 ? '' : 's'} as style references, while staying unique from them.</p>
-        </div>
-        <button className="btn small" onClick={() => setOpen(!open)}>{open ? 'Hide' : 'View / edit'}</button>
-      </div>
-      <div className="world-refs">
-        {world.locked.map((i) => (
-          <span key={i.id} className="world-ref" title={`${i.name} · ${i.locked_label}`}>
-            {i.cover ? <img src={i.cover.url} alt="" /> : <span>{KIND_ICON[i.kind]}</span>}<small>{i.name}</small>
-          </span>
-        ))}
-        {!world.locked.length && <span className="muted small">No locked designs yet — the first ones you lock become the style reference for everything after.</span>}
-      </div>
-      {open && (
-        <>
-          <textarea rows={4} value={text} onChange={(e) => setText(e.target.value)} />
-          <div className="row end">
-            <button className="btn primary small" disabled={busy || text === world.guide} onClick={() => act(async () => { await api.put('/api/channel', { world_style: text }); await refreshChannel(); onSaved(); }, 'World style saved')}>Save world style</button>
           </div>
-        </>
+        );
+      })}
+      {!cards.length && <div className="empty">No asset cards yet. Click <b>Analyze lyrics</b>, or add one manually.</div>}
+
+      {open && cards.find((c) => c.id === open) && (
+        <CardEditor key={open} card={cards.find((c) => c.id === open)} lines={lines} templates={templates} local={local} anyGenerating={generating}
+          update={update} onDelete={() => { setCards((cs) => cs.filter((x) => x.id !== open)); setOpen(null); }} reload={load} />
       )}
     </div>
   );
 }
 
-function LibraryStrip({ lib, onAdd }) {
-  if (!lib.length) return null;
+/** The user's own ideas for characters and scenery. Claude follows them in “Analyze with Claude” and “Draft prompt with Claude”. */
+function IdeasPanel({ episode, setEpisode }) {
+  const saved = episode.cast_notes || {};
+  const [n, setN] = useState({ characters: saved.characters || '', scenery: saved.scenery || '' });
+  const [act, busy] = useAction();
+  const dirty = n.characters !== (saved.characters || '') || n.scenery !== (saved.scenery || '');
+  const save = () => act(async () => {
+    const r = await api.put(`/api/episodes/${episode.id}/cast-notes`, n);
+    setEpisode((e) => ({ ...e, cast_notes: r }));
+  }, 'Your ideas are saved. Claude will follow them');
   return (
     <div className="card">
-      <h3>Reuse from My World <span className="muted small">· locked designs not in this project yet</span></h3>
-      <div className="chips">
-        {lib.map((i) => (
-          <button key={i.id} className="chip" onClick={() => onAdd(i)}>
-            {i.cover && <img src={i.cover.url} alt="" />}{i.name} <small>({i.kind})</small> ＋
-          </button>
+      <div className="section-head">
+        <div>
+          <h3>Your ideas for Claude</h3>
+          <p className="muted small">Optional. Describe how you picture the characters and scenery. Claude follows your ideas when you click <b>Analyze with Claude</b> or <b>Draft prompt with Claude</b>. Your ideas win wherever they differ from Claude's, but the World Style still applies. Leave a box empty to let Claude decide.</p>
+        </div>
+        {dirty && <button className="btn primary small" disabled={busy} onClick={save}>Save ideas</button>}
+      </div>
+      <div className="grid2">
+        <label className="field"><span>Characters</span>
+          <textarea rows={4} value={n.characters} placeholder="e.g. The mother hen is plump and orange with a tiny blue apron. Add three fluffy yellow chicks, each with a different coloured bow." onChange={(e) => setN({ ...n, characters: e.target.value })} /></label>
+        <label className="field"><span>Scenery</span>
+          <textarea rows={4} value={n.scenery} placeholder="e.g. A sunny farmyard with a red barn, a wooden fence and a small pond. Later the song moves to a moonlit meadow." onChange={(e) => setN({ ...n, scenery: e.target.value })} /></label>
+      </div>
+    </div>
+  );
+}
+
+function AddAsset({ onAdd }) {
+  const [f, setF] = useState(null);
+  if (!f) return <button className="btn" onClick={() => setF({ kind: 'character', name: '', description: '' })}>+ Add asset</button>;
+  return (
+    <div className="row wrap add-asset">
+      <select value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value })}><option value="character">Character</option><option value="location">Scenery</option><option value="prop">Prop</option></select>
+      <input placeholder="Name, e.g. Pip the Sky Bunny" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
+      <input className="grow" placeholder="Description, e.g. a sky-blue bunny with one crescent-shaped ear and one golden front paw" value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} />
+      <button className="btn primary small" disabled={!f.name.trim()} onClick={() => { onAdd(f); setF(null); }}>Add</button>
+      <button className="btn ghost small" onClick={() => setF(null)}>Cancel</button>
+    </div>
+  );
+}
+
+function CardEditor({ card, lines, templates, local, anyGenerating, update, onDelete, reload }) {
+  const { health, toast } = useStudio();
+  const [act, busy] = useAction();
+  const [f, setF] = useState({ name: card.name, description: card.description, signature: card.signature || '', prompt: card.prompt || '', texture_prompt: card.texture_prompt || '', pose: card.pose || 'none', user_notes: card.user_notes || '' });
+  const [method, setMethod] = useState(card.method === 'library' ? 'procedural' : card.method || 'procedural');
+  const [recipe, setRecipe] = useState(card.recipe);
+  const [previewBuf, setPreviewBuf] = useState(null);
+  const [info, setInfo] = useState(null);
+  const [meshyConfirm, setMeshyConfirm] = useState(false);
+  const [rigIt, setRigIt] = useState(card.kind === 'character' && card.rig_type !== 'none');
+  const [rigType, setRigType] = useState(card.rig_type || '');
+  const [rigNote, setRigNote] = useState(card.rig_note || '');
+  const [checkingRig, setCheckingRig] = useState(false);
+  // Ask Claude (or the offline guess) which skeleton this character needs, the first time the Meshy box opens.
+  const checkRig = async (mode) => {
+    setCheckingRig(true);
+    try { const r = await api.post(`/api/cards/${card.id}/rig-type`, { mode }); setRigType(r.rig_type); setRigNote(r.rig_note || ''); setRigIt(r.rig_type !== 'none'); if (r.suggested_height && !rigHeight) setRigHeight(String(r.suggested_height)); }
+    catch (e) { toast(e.message, 'error'); } finally { setCheckingRig(false); }
+  };
+  useEffect(() => { if (meshyConfirm && card.kind === 'character' && !rigType) checkRig(); }, [meshyConfirm]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [rigHeight, setRigHeight] = useState('');
+  const [credits, setCredits] = useState(null);
+  const ref = useRef();
+  const dirtyText = ['name', 'description', 'signature', 'prompt', 'texture_prompt', 'pose', 'user_notes'].some((k) => (f[k] ?? '') !== (card[k] ?? (k === 'pose' ? 'none' : '')));
+  const recipeDirty = JSON.stringify(recipe) !== JSON.stringify(card.recipe);
+  const meshyOn = health?.providers?.find((p) => p.id === 'meshy')?.state === 'active';
+  const claudeOn = health?.providers?.find((p) => p.id === 'claude')?.state === 'active';
+  const [cls, label] = cardStatus(card);
+
+  useEffect(() => { ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, []);
+  useEffect(() => { setRecipe(card.recipe); }, [card.recipe]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Live suggestion preview (procedural only, nothing saved). Debounced.
+  useEffect(() => {
+    if (method !== 'procedural' || !recipe) { setPreviewBuf(null); return; }
+    const t = setTimeout(async () => {
+      const r = await fetch('/api/procedural/preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ recipe }) });
+      if (r.ok) setPreviewBuf(await r.arrayBuffer());
+    }, 350);
+    return () => clearTimeout(t);
+  }, [recipe, method]);
+
+  const save = () => act(async () => update(await api.put(`/api/cards/${card.id}`, f)), 'Saved');
+  const call = (fn, msg) => act(async () => { const c = await fn(); update(c.card || c); return c; }, msg);
+  const saveToWorld = () => act(async () => {
+    const r = await api.post(`/api/cards/${card.id}/save-to-world`);
+    update(r.card);
+    const a = document.createElement('a'); a.href = r.download_url; a.download = ''; document.body.appendChild(a); a.click(); a.remove();
+    toast(`Saved to My World. A .glb download was also offered — your browser decides where it goes.`);
+  });
+  const showingResult = !!card.model_url;
+
+  return (
+    <div className="card card-editor" ref={ref}>
+      <div className="section-head">
+        <div className="row wrap">
+          <h3 style={{ margin: 0 }}>{card.name}</h3>
+          <span className={`pill ${cls}`}>{label}</span>
+          {card.error && <span className="error-text small">{card.error}</span>}
+        </div>
+        <div className="row">
+          {card.status !== 'approved' && <Confirm text="Delete this card?" onYes={() => act(async () => { await api.del(`/api/cards/${card.id}`); onDelete(); })}>Delete</Confirm>}
+        </div>
+      </div>
+
+      <StyleBanners card={card} call={call} busy={busy} />
+
+      <div className="grid2">
+        <label className="field"><span>Name</span><input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></label>
+        <label className="field"><span>Recognizable features (kept in every version)</span><input value={f.signature} placeholder="e.g. one crescent-shaped ear and one golden front paw" onChange={(e) => setF({ ...f, signature: e.target.value })} /></label>
+      </div>
+      <label className="field"><span>Description</span><textarea rows={2} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} /></label>
+      <label className="field"><span>Your ideas for Claude about {card.kind === 'location' ? 'this place' : card.kind === 'character' ? 'this character' : 'this prop'} <em className="muted">(Claude follows these when drafting the prompt)</em></span>
+        <textarea rows={2} value={f.user_notes} placeholder={card.kind === 'location' ? 'e.g. Make it evening with warm lanterns. Keep the river on the left.' : 'e.g. Make her taller than the others, with round glasses. She walks upright like a person.'} onChange={(e) => setF({ ...f, user_notes: e.target.value })} /></label>
+      <div className="row wrap small">
+        <span className="muted">Used in:</span>
+        {card.usages.length ? card.usages.map((i) => <span key={i} className="tag">{i + 1}. {(lines[i]?.en || lines[i]?.ta || '').slice(0, 48)}</span>) : <span className="muted">not in the current lyrics (kept)</span>}
+        <span className="grow" />
+        {dirtyText && <button className="btn primary small" disabled={busy} onClick={save}>Save text</button>}
+      </div>
+
+      {card.status === 'match' && card.match && (
+        <div className="match-panel">
+          <div className="match-preview">{card.match.model ? <Viewer3D url={card.match.model.url} height={220} /> : card.match.image ? <img src={card.match.image.url} alt="" /> : <div className="media-empty">No preview</div>}</div>
+          <div className="stack">
+            <b>Found in My World: “{card.match.name}” ({card.match.version_label})</b>
+            <p className="small muted">{card.match.description}</p>
+            {!card.match.model && <div className="hint warn">This My World item has no 3D model yet — reuse it only if you will import one later.</div>}
+            <div className="row wrap">
+              <button className="btn approve" disabled={busy} onClick={() => call(() => api.post(`/api/cards/${card.id}/reuse`), `Reusing “${card.match.name}”`)}>✓ Confirm reuse</button>
+              <button className="btn" disabled={busy} onClick={() => call(() => api.post(`/api/cards/${card.id}/new-design`), 'Creating a new design instead')}>Create a new design instead</button>
+            </div>
+            <small className="muted">Confirming reuse makes no generation call — the saved My World copy is used.</small>
+          </div>
+        </div>
+      )}
+
+      {card.decision === 'reuse' && card.status === 'approved' ? (
+        <div className="locked">Reusing “{card.library?.name}” from My World ({card.library?.version_label}).
+          <button className="btn small" onClick={() => call(() => api.post(`/api/cards/${card.id}/new-design`), 'Switched to a new design')}>Create a new design instead</button>
+        </div>
+      ) : card.status !== 'match' && (
+        <>
+          <div className="tabs">{METHODS.map(([k, l]) => <button key={k} className={method === k ? 'on' : ''} onClick={() => setMethod(k)}>{l}</button>)}</div>
+          {method === 'procedural' && (
+            <div className="method-panel">
+              <div className={`mapping ${card.mapping?.supported === false ? 'bad' : ''}`}>
+                <div className="row wrap">
+                  <b>Suggestion:</b>
+                  <span>{card.mapping?.message || 'Not mapped yet.'}</span>
+                  <span className="grow" />
+                  <button className="btn small" disabled={busy} onClick={() => call(() => api.post(`/api/cards/${card.id}/map`, { description: f.description }), 'Re-mapped from the description')}>Re-map from description</button>
+                  <select value="" onChange={(e) => e.target.value && call(() => api.post(`/api/cards/${card.id}/map`, { template: e.target.value }), 'Template chosen')}>
+                    <option value="">Choose template…</option>{templates.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
+                  </select>
+                </div>
+                {card.mapping?.applied?.length > 0 && <div className="small muted">Applied: {card.mapping.applied.join(' · ')}</div>}
+                {card.mapping?.unsupported?.length > 0 && <div className="small warn">Not supported offline: {card.mapping.unsupported.join(', ')} — try Local AI, Import Model or Meshy for these.</div>}
+              </div>
+              {recipe && (
+                <div className="build-grid">
+                  <div>
+                    <div className="muted small">Template: <b>{templates.find((t) => t.key === recipe.template)?.label}</b> · edit parameters below — the preview updates live (not saved until you build).</div>
+                    <RecipeEditor templates={templates} recipe={recipe} onChange={setRecipe} />
+                  </div>
+                  <div className="stack">
+                    <div className="muted small">Suggestion preview</div>
+                    {previewBuf ? <Viewer3D buffer={previewBuf} height={300} /> : <div className="media-empty">Rendering preview…</div>}
+                    <div className="row wrap">
+                      <button className="btn primary" disabled={busy || card.status === 'generating'} onClick={() => call(() => api.post(`/api/cards/${card.id}/build`, { recipe }), 'Built locally — review the result below')}>⚒ Build Locally</button>
+                      {recipeDirty && <button className="btn small" onClick={() => call(() => api.put(`/api/cards/${card.id}/recipe`, { recipe }), 'Recipe saved')}>Save recipe only</button>}
+                      {recipeDirty && <button className="btn ghost small" onClick={() => setRecipe(card.recipe)}>Undo edits</button>}
+                    </div>
+                    <small className="muted">Offline · no GPU or internet needed · free</small>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          {method === 'local_ai' && <LocalAiPanel card={card} local={local} busy={busy || anyGenerating} call={call} />}
+          {method === 'import' && (
+            <div className="method-panel">
+              <p className="small">Import a static <b>.glb</b> you already have — for example a model downloaded from Meshy's website, or exported from Blender (File → Export → glTF Binary).</p>
+              <input type="file" accept=".glb" onChange={(e) => { const file = e.target.files[0]; e.target.value = ''; if (file) call(() => api.upload(`/api/cards/${card.id}/import`, [file].map((x) => Object.assign(x)), {}).then((c) => c), 'Model imported — review it below'); }} />
+            </div>
+          )}
+          {method === 'meshy' && (
+            <div className="method-panel">
+              <label className="field"><span>Meshy prompt <em className={f.prompt.length > 800 ? 'error-text' : 'muted'}>{f.prompt.length}/800</em></span><textarea rows={3} value={f.prompt} onChange={(e) => setF({ ...f, prompt: e.target.value })} /></label>
+              <label className="field"><span>Texture prompt <em className="muted">{f.texture_prompt.length}/800</em></span><textarea rows={2} value={f.texture_prompt} onChange={(e) => setF({ ...f, texture_prompt: e.target.value })} /></label>
+              <div className="row wrap">
+                <select value={f.pose} onChange={(e) => setF({ ...f, pose: e.target.value })}><option value="none">Natural pose</option><option value="a-pose">A-pose (if you'll rig it in Stage 4)</option><option value="t-pose">T-pose</option></select>
+                <button className="btn small" disabled={busy || !claudeOn} title={claudeOn ? 'Claude only — no Meshy call' : 'Connect Claude'} onClick={() => act(async () => {
+                  if (dirtyText) await api.put(`/api/cards/${card.id}`, f);
+                  const r = await api.post(`/api/cards/${card.id}/draft-prompt`, {}); update(r); setF((x) => ({ ...x, prompt: r.prompt, texture_prompt: r.texture_prompt, signature: r.signature || x.signature }));
+                }, 'Claude drafted the Meshy prompt (no Meshy call)')}>✨ Draft prompt with Claude</button>
+                <button className="btn small" disabled={!meshyOn} title="Makes one free Meshy request" onClick={() => act(async () => setCredits(await api.post('/api/meshy/balance', {})))}>Check Meshy credits</button>
+                {credits && <span className="small muted">{credits.balance} credits left</span>}
+                {dirtyText && <button className="btn small" onClick={save}>Save prompt</button>}
+              </div>
+              <MeshyFinalPrompt card={card} />
+              {!meshyOn && <Placeholder>Meshy not connected — add your key in AI Connections (Build Locally and Import work without it)</Placeholder>}
+              {meshyOn && !meshyConfirm && (
+                <button className="btn meshy-btn" disabled={busy || card.status === 'generating' || dirtyText || !f.prompt.trim()} title={dirtyText ? 'Save the prompt first' : card.status === 'generating' ? 'This card is already generating' : ''} onClick={() => setMeshyConfirm(true)}>Generate in Meshy…</button>
+              )}
+              {meshyConfirm && (
+                <div className="confirm-box">
+                  This submits <b>one paid Meshy job</b> for “{card.name}”: shape + texture (about 30 credits){card.kind === 'character' && rigIt && rigType !== 'none' ? <> + <b>{rigType === 'quadruped' ? 'four-legged' : 'two-legged'} rigging</b> (about 5 credits more)</> : ''}. Continue?
+                  {card.kind === 'character' && (
+                    <div className="rig-choice">
+                      <div className="row wrap">
+                        <b className="small">Body type for the rig:</b>
+                        {checkingRig ? <span className="small muted">Claude is checking what kind of character this is…</span> : (
+                          <select value={rigType || 'biped'} onChange={(e) => { setRigType(e.target.value); setRigNote('Chosen by you'); setRigIt(e.target.value !== 'none'); api.put(`/api/cards/${card.id}`, { rig_type: e.target.value }).catch(() => {}); }}>
+                            <option value="quadruped">🐾 Four-legged animal (walks on 4 legs)</option>
+                            <option value="biped">🧍 Two-legged (stands & walks upright)</option>
+                            <option value="none">✨ No rig (no legs — sun, star, cloud…)</option>
+                          </select>)}
+                        {!checkingRig && <button className="btn ghost tiny" disabled={busy} onClick={() => checkRig()} title="Ask Claude again">↻ Ask Claude</button>}
+                      </div>
+                      {rigNote && !checkingRig && <div className="small muted">{rigNote}</div>}
+                      {rigType !== 'none' && (
+                        <div className="row wrap">
+                          <label className="check"><input type="checkbox" checked={rigIt} onChange={(e) => setRigIt(e.target.checked)} /> Also rig it for animation (skeleton + walking/running clips for Stage 4)</label>
+                          {rigIt && <label className="small">Height (m{rigType === 'quadruped' ? ', optional — blank keeps its own size' : ', optional'}) <input type="number" min="0.1" max="20" step="0.1" style={{ width: 70 }} value={rigHeight} onChange={(e) => setRigHeight(e.target.value)} /></label>}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {card.kind === 'character' && rigIt && rigType === 'biped' && <div className="hint">For a two-legged rig it is modelled <b>standing upright</b>{(!f.pose || f.pose === 'none') ? <> in A-pose (arms slightly out)</> : ''}, so walking and running look clean.</div>}
+                  {card.kind === 'character' && rigIt && rigType === 'quadruped' && <div className="hint">For a four-legged rig it is modelled <b>standing on all four legs</b> with clear gaps between them, so Meshy's animal walk and run fit it.</div>}
+                  <div className="row">
+                    <button className="btn danger" disabled={busy} onClick={() => { setMeshyConfirm(false); act(async () => {
+                      const r = await fetch(`/api/cards/${card.id}/generate`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-User-Action': 'generate-in-meshy' }, body: JSON.stringify({ confirm: true, rig: card.kind === 'character' && rigIt && rigType !== 'none', rig_type: rigType || 'biped', ...(rigIt && rigHeight ? { height_meters: Number(rigHeight) } : {}) }) });
+                      const j = await r.json(); if (!r.ok) throw new Error(j.error); update(j); reload();
+                    }, card.kind === 'character' && rigIt ? 'Submitted to Meshy — model + rig' : 'Submitted to Meshy — one job'); }}>Yes, generate in Meshy</button>
+                    <button className="btn ghost" onClick={() => setMeshyConfirm(false)}>Cancel</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </>
+      )}
+
+      {card.rig && <div className="hint ok">🦴 Rigged for animation ({card.rig.animation_type === 'quadruped' ? 'four-legged' : 'two-legged'}) — movement clips: {card.rig.clips.join(', ') || 'none'}. Saving to My World keeps the rig and clips with this character for Stage 4.</div>}
+      {card.status === 'generating' && <div className="hint">Generating… this card updates automatically. Up to 10 Meshy generations can run at once.</div>}
+
+      {showingResult && card.decision !== 'reuse' && (
+        <div className="result-panel">
+          <div className="section-head"><h4 style={{ margin: 0 }}>Result {card.revisions?.[0] ? `· revision ${card.revisions[0].n} (${card.revisions[0].method})` : ''}</h4>
+            {info && <span className="muted small mono">{info.triangles.toLocaleString()} triangles · {info.materials} materials{info.textured ? ' · textured' : ''} · {info.size.join(' × ')} m</span>}</div>
+          <div className="build-grid">
+            <Viewer3D url={card.model_url} height={340} onInfo={setInfo} />
+            <div className="stack">
+              <div className="row wrap">
+                {card.status !== 'approved'
+                  ? <button className="btn approve" disabled={busy || card.status === 'generating'} onClick={() => call(() => api.post(`/api/cards/${card.id}/approve`), 'Approved')}>✓ Approve</button>
+                  : <button className="btn ghost small" onClick={() => call(() => api.post(`/api/cards/${card.id}/unapprove`), 'Back to review')}>Un-approve</button>}
+                {card.status === 'approved' && (
+                  <button className={`btn ${card.saved_at ? '' : 'primary'}`} disabled={busy} onClick={saveToWorld}>{card.saved_at ? '⬇ Download .glb again' : '⬇ Download & Save to My World'}</button>
+                )}
+              </div>
+              {card.status === 'approved' && !card.saved_at && <div className="hint warn">Approved · Not saved to My World — this clears only after the library copy is saved.</div>}
+              {card.saved_at && <div className="hint ok">Saved in My World as “{card.library?.name}” {card.library?.version_label} — reusable in any project without regenerating.</div>}
+              <PartColors card={card} call={call} busy={busy} />
+              <Revisions card={card} call={call} busy={busy} />
+              <FutureTools />
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** World Style compliance on a card: uniqueness against locked designs + style version. */
+function StyleBanners({ card, call, busy }) {
+  const { toast } = useStudio();
+  const u = card.uniqueness;
+  return (
+    <>
+      {card.style_stale && (
+        <div className="review-banner">
+          Made with an older World Style.
+          {card.recipe ? <button className="btn small" disabled={busy} onClick={() => call(() => api.post(`/api/cards/${card.id}/apply-style`), 'Current World Style applied to the recipe — click Build Locally to rebuild')}>Apply current World Style</button>
+            : <span>Regenerate it to use the current style (the Meshy prompt is always rebuilt with the latest style).</span>}
+        </div>
+      )}
+      {u && !u.unique && (
+        <div className="alert warn-strong row wrap">
+          <span><b>Too similar to “{u.closest.name}”</b> ({Math.round(u.closest.score * 100)}% alike). Every character in your world must be recognizable on its own, so approval is blocked until it's more distinct.</span>
+          <button className="btn small primary" disabled={busy} onClick={() => call(async () => { const r = await api.post(`/api/cards/${card.id}/make-unique`); toast(`Changed: ${r.changes.join(' · ')} — click Build Locally to rebuild`); return r; })}>✨ Make unique</button>
+        </div>
+      )}
+      {u && <div className="small muted">Signature: <b>{u.signature}</b>{u.closest ? ` · closest locked design: ${u.closest.name} (${Math.round(u.closest.score * 100)}% alike, limit ${Math.round(u.limit * 100)}%)` : ' · no similar locked designs'}</div>}
+    </>
+  );
+}
+
+/** Exactly what “Generate in Meshy” will send (prompt + World Style + uniqueness clause). */
+function MeshyFinalPrompt({ card }) {
+  const [mp, setMp] = useState(null);
+  useEffect(() => { api.get(`/api/cards/${card.id}/meshy-prompt`).then(setMp).catch(() => setMp(null)); }, [card.id, card.prompt, card.texture_prompt, card.updated_at]);
+  if (!mp) return null;
+  return (
+    <details className="tool" open>
+      <summary>Exactly what will be sent to Meshy ({mp.final.length}/800)</summary>
+      <pre className="final-prompt">{mp.final}</pre>
+      <div className="small muted">Texture: {mp.texture || '—'}</div>
+      <div className="small muted">Your World Style summary is attached automatically (unless the prompt already contains it), even if you rewrite the prompt above.</div>
+    </details>
+  );
+}
+
+function PartColors({ card, call, busy }) {
+  const [mats, setMats] = useState([]);
+  useEffect(() => { api.get(`/api/cards/${card.id}/materials`).then(setMats).catch(() => setMats([])); }, [card.id, card.model_path]);
+  if (!mats.length) return null;
+  return (
+    <details className="tool">
+      <summary>Part colours ({mats.length} materials)</summary>
+      <p className="small muted">Changing one part keeps every other part untouched{card.method === 'procedural' ? '. For built-locally assets you can also change colours in the recipe above and rebuild.' : '.'} Textured parts are tinted as a whole until texture masks arrive.</p>
+      <div className="swatches">
+        {mats.map((m) => (
+          <label key={m.index} className="swatch" title={`${m.name}${m.textured ? ' (textured)' : ''}`}>
+            <input type="color" defaultValue={m.color} disabled={busy} onChange={(e) => { const v = e.target.value; clearTimeout(window.__rc); window.__rc = setTimeout(() => call(() => api.post(`/api/cards/${card.id}/recolor`, { material_index: m.index, color: v }), `Recoloured ${m.name}`), 500); }} />
+            <span>{m.name}{m.textured ? ' ▦' : ''}</span>
+          </label>
         ))}
       </div>
-    </div>
+    </details>
   );
 }
 
-function AddManual({ onAdd }) {
-  const [open, setOpen] = useState(false);
-  const [f, setF] = useState({ kind: 'character', name: '' });
-  const submit = () => { onAdd(f); setOpen(false); setF({ ...f, name: '' }); };
-  if (!open) return <button className="btn small" onClick={() => setOpen(true)}>+ Add manually</button>;
+function Revisions({ card, call, busy }) {
+  if (!card.revisions?.length) return null;
   return (
-    <div className="row">
-      <select value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value })}><option value="character">Character</option><option value="location">Scenery</option><option value="prop">Prop</option></select>
-      <input autoFocus value={f.name} placeholder="Name, e.g. Mango Monkey" onChange={(e) => setF({ ...f, name: e.target.value })} onKeyDown={(e) => e.key === 'Enter' && f.name.trim() && submit()} />
-      <button className="btn primary small" disabled={!f.name.trim()} onClick={submit}>Add</button>
-      <button className="btn ghost small" onClick={() => setOpen(false)}>Cancel</button>
-    </div>
+    <details className="tool" open>
+      <summary>Version history ({card.revisions.length})</summary>
+      <ul className="revisions">
+        {card.revisions.map((r, i) => (
+          <li key={r.id} className={i === 0 ? 'current' : ''}>
+            <b>#{r.n}</b> <span className="tag">{r.method}</span> <span className="small">{r.note}</span> <span className="muted small mono">{r.created_at?.slice(5, 16)}</span>
+            {i > 0 && <button className="btn tiny" disabled={busy} onClick={() => call(() => api.post(`/api/cards/${card.id}/revisions/${r.id}/restore`), `Restored revision ${r.n}`)}>Restore</button>}
+          </li>
+        ))}
+      </ul>
+    </details>
   );
 }
 
-// ---------------- Design workshop ----------------
-const SPEC_FIELDS = {
-  character: [['description', 'Who is it?'], ['look', 'Look (shape, colors, outfit)'], ['personality', 'Personality'], ['voice', 'Voice'], ['palette', 'Palette (hex colors)'], ['image_prompt', 'Image prompt'], ['search_terms', '3D model search words']],
-  location: [['description', 'What is this place?'], ['look', 'Layout & landmarks'], ['lighting', 'Lighting'], ['palette', 'Palette (hex colors)'], ['image_prompt', 'Image prompt'], ['search_terms', '3D model search words']],
-};
-const CATS = { character: [['reference', 'Reference photo / sketch'], ['expression', 'Expression'], ['pose', 'Pose'], ['voice', 'Voice reference'], ['render', 'Blender render'], ['blender', 'Blender / 3D file']],
-  location: [['view', 'Reference photo / view'], ['reference', 'Mood reference'], ['lighting', 'Lighting reference'], ['render', 'Blender render'], ['blender', 'Blender / 3D file']] };
-const MODEL_SITES = [
-  ['Sketchfab', (q) => `https://sketchfab.com/search?q=${q}&type=models&features=downloadable`],
-  ['Poly Haven', (q) => `https://polyhaven.com/models?s=${q}`],
-  ['BlenderKit', (q) => `https://www.blenderkit.com/asset-gallery?query=${q}`],
-  ['CGTrader free', (q) => `https://www.cgtrader.com/free-3d-models?keywords=${q}`],
-];
-
-function Workshop({ itemId, world, onChanged, onClose, jobs = [], rev = 0, kick }) {
-  const { episode, setEpisode, refreshEpisode, health, toast } = useStudio();
-  const [item, setItem] = useState(null);
-  const [spec, setSpec] = useState({});
-  const [cat, setCat] = useState(null);
-  const [showSpec, setShowSpec] = useState(false);
-  const [chatRev, setChatRev] = useState(0);
-  const [thinking, setThinking] = useState(false);
-  const [act, busy] = useAction();
-  const cast = episode.cast.find((c) => c.item_id === itemId);
-  const kindKey = item?.kind === 'character' ? 'character' : 'location';
-  const st = (id) => health?.providers?.find((p) => p.id === id)?.state;
-
-  const apply = useCallback((it) => { setItem(it); setSpec(it.versions.at(-1)?.spec || {}); onChanged?.(); }, [onChanged]);
-  useEffect(() => { api.get(`/api/items/${itemId}`).then(apply); }, [itemId, apply, rev]);
-  /** Ask the design assistant from a button (shows up in the chat too). */
-  const askClaude = async (message) => {
-    setThinking(true);
-    try { const r = await api.post(`/api/items/${itemId}/assistant`, { message }); apply(r.item); await refreshEpisode(); setChatRev((x) => x + 1); toast('Claude updated the design and Meshy prompts'); }
-    catch (e) { toast(e.message, 'error'); }
-    finally { setThinking(false); }
-  };
-  if (!item || !cast) return <div className="card muted">Loading design…</div>;
-
-  const dev = item.versions.at(-1);
-  const devLocked = dev?.status === 'approved';
-  const cats = CATS[kindKey];
-  const curCat = cat || cats[0][0];
-  const images = (dev?.assets || []).filter((a) => a.mime.startsWith('image/'));
-  const specDirty = JSON.stringify(spec) !== JSON.stringify(dev?.spec || {});
-  const q = encodeURIComponent(spec.search_terms || `cartoon ${item.name}`);
-  const pinnedOlder = cast.locked && cast.version_id !== item.versions.filter((v) => v.status === 'approved').at(-1)?.id;
-  const afterChange = async (it) => { apply(it); await refreshEpisode(); };
-  const asText = (v) => (Array.isArray(v) ? v.join(', ') : v ?? '');
-  const cover = coverOf(dev?.assets);
-
+function FutureTools() {
   return (
-    <div className="workshop">
-      <div className="card">
-        <div className="section-head">
-          <div>
-            <h3>{KIND_ICON[item.kind]} {item.name} <span className="muted small">· design</span></h3>
-            <div className="row wrap small">{item.versions.map((v) => <span key={v.id} className="tag">{v.label} <Badge status={v.status} text={v.status === 'approved' ? 'Locked' : 'Draft'} /></span>)}</div>
-          </div>
-          <div className="row wrap">
-            {devLocked ? <span className="locked-pill">🔒 {dev.label} locked for lifetime</span> : (
-              <button className="btn approve" disabled={busy || !images.length} title={images.length ? '' : 'Add or create at least one image first'}
-                onClick={() => act(async () => afterChange(await api.post(`/api/versions/${dev.id}/approve`)), `${item.name} locked — it now guides the style of every future creation`)}>
-                🔒 Lock for lifetime
-              </button>
-            )}
-            {pinnedOlder && <button className="btn small" onClick={() => act(async () => setEpisode(await api.put(`/api/episodes/${episode.id}/cast`, { item_id: item.id })), 'Project now uses the newest locked version')}>Use newest locked version here</button>}
-            <button className="btn ghost small" onClick={onClose}>Close</button>
-          </div>
-        </div>
-        {devLocked && <div className="locked">This design is locked. Redesigning (chat, new references or images) starts a new draft — this project keeps <b>{cast.version_label}</b> until you lock the new one.</div>}
+    <details className="tool">
+      <summary>More editing tools (planned)</summary>
+      <ul className="small muted planned">
+        <li>Painted texture masks — paint an area; recolouring then only affects the masked area</li>
+        <li>Masked retexturing — re-texture just the masked area</li>
+        <li>Local geometry edits (push/pull, smooth)</li>
+        <li>Remeshing (lower triangle count for animation)</li>
+        <li>UV tools (unwrap / pack)</li>
+      </ul>
+      <p className="small muted">Every edit already creates a revision, so these tools will slot into the same history.</p>
+    </details>
+  );
+}
+
+function LocalAiPanel({ card, local, busy, call }) {
+  if (!local) return <div className="method-panel muted">Checking Local AI…</div>;
+  const cap = (k) => local.capabilities.find((c) => c.key === k);
+  return (
+    <div className="method-panel">
+      <div className="row wrap"><b>{local.model}</b><span className={`pill ${local.ready ? 'ok' : 'muted'}`}>{local.ready ? 'Ready' : 'Not available'}</span><span className="muted small">{local.url}</span></div>
+      <ul className="checks">{local.checks.map((c) => <li key={c.key} className={c.ok ? 'ok' : 'bad'}>{c.ok ? '✓' : '✗'} {c.label} — <span className="muted">{c.detail}</span></li>)}</ul>
+      <div className="small"><b>Capabilities on this machine:</b> {local.capabilities.map((c) => <span key={c.key} className={`tag ${c.available ? '' : 'off'}`} title={c.note}>{c.available ? '✓' : '✗'} {c.label}</span>)}</div>
+      <p className="small muted">{local.license}</p>
+      <div className="row wrap">
+        <label className="btn small">Upload reference image<input type="file" accept="image/*" hidden onChange={(e) => { const file = e.target.files[0]; e.target.value = ''; if (file) call(() => api.upload(`/api/cards/${card.id}/ref-image`, [file], {}), 'Reference image added'); }} /></label>
+        {card.model_url && card.revisions?.some((r) => r.method === 'procedural') && (
+          <button className="btn small" disabled={busy} title="Local AI builds what it sees — starting from your World-Style model keeps it in style" onClick={() => call(async () => {
+            const dataUrl = await thumbnail(card.model_url, 768);
+            const blob = await (await fetch(dataUrl)).blob();
+            return api.upload(`/api/cards/${card.id}/ref-image`, [new File([blob], 'world-style-reference.png', { type: 'image/png' })], {});
+          }, 'Reference image made from the World-Style model')}>Use the Build Locally model as reference</button>
+        )}
+        {card.ref_image_path && <img className="ref-thumb" src={`/media/${card.ref_image_path}`} alt="reference" />}
+        {card.mapping?.ref_check && <span className={`pill ${card.mapping.ref_check.verdict === 'fits' ? 'ok' : card.mapping.ref_check.verdict === 'partly' ? 'warn' : 'error'}`} title="Colours of the reference image vs your World Style palette">Reference vs World Style: {card.mapping.ref_check.verdict}</span>}
+        <button className="btn primary" disabled={busy || !cap('image_to_3d')?.available || !card.ref_image_path} onClick={() => call(() => api.post(`/api/cards/${card.id}/local-ai`, { action: 'shape' }), 'Local AI shape started')}>Generate shape (image → 3D)</button>
+        <button className="btn" disabled={busy || !cap('texture')?.available || !card.model_url} title={cap('texture')?.note} onClick={() => call(() => api.post(`/api/cards/${card.id}/local-ai`, { action: 'texture' }), 'Local AI texture refinement started')}>Refine texture</button>
       </div>
-
-      <div className="stage-grid">
-        <div className="stack">
-          <div className="card">
-            <div className="design-hero">
-              <div className="design-hero-img">{cover ? <img src={cover.url} alt="" /> : <span className="cast-ph">{KIND_ICON[item.kind]}<small>No image yet</small></span>}</div>
-              <div className="stack grow">
-                <p className="design-desc big">{spec.look || spec.description || 'No design yet. Upload reference photos and/or describe it to the assistant.'}</p>
-                {Array.isArray(spec.palette) && <div className="row">{spec.palette.map((c) => <span key={c} className="color-dot" style={{ background: c }} title={c} />)}</div>}
-                <div className="row wrap">
-                  {st('gptImage') === 'active' ? (
-                    <button className="btn primary" disabled={busy} onClick={() => act(async () => { apply(await api.post(`/api/items/${item.id}/generate-image`, {})); refreshEpisode(); }, 'New design image created (draft)')}>✨ Create image (GPT Image)</button>
-                  ) : st('meshy') === 'active' ? (
-                    <span className="muted small">Create images and the 3D model in the Meshy panel below.</span>
-                  ) : <Placeholder>Connect Meshy or GPT Image to create pictures</Placeholder>}
-                  {thinking && <span className="hint">Claude is working on the design…</span>}
-                </div>
-                <small className="muted">Uses {images.length ? `the ${Math.min(images.length, 6)} newest image(s) below` : 'the design text'} + your world style + {world?.locked.filter((l) => l.id !== item.id).length || 0} locked design(s) as style references.</small>
-              </div>
-            </div>
-          </div>
-
-          <MeshyPanel item={item} spec={spec} images={images} jobs={jobs} act={act} busy={busy || thinking}
-            onSpecSaved={(it) => { apply(it); refreshEpisode(); }} askClaude={askClaude} onJobStarted={() => kick?.()} />
-
-          <div className="card">
-            <div className="section-head">
-              <h4 style={{ margin: 0 }}>References & images ({dev?.label})</h4>
-              <span className="muted small">Upload several photos — the assistant and image tool combine them into one design.</span>
-            </div>
-            <div className="row wrap import-row">
-              <select value={curCat} onChange={(e) => setCat(e.target.value)}>{cats.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
-              <ImportButton label="Upload" disabled={busy} accept={curCat === 'voice' ? 'audio/*' : curCat === 'blender' ? '.blend,.glb,.gltf,.fbx,.obj,.usd,.usdz' : 'image/*,video/*'}
-                onFiles={(files) => act(async () => {
-                  const it = devLocked ? await api.post(`/api/items/${item.id}/draft`) : item;
-                  await api.upload(`/api/versions/${it.versions.at(-1).id}/assets`, files, { category: curCat, source: ['blender', 'render'].includes(curCat) ? 'blender' : 'import' });
-                  apply(await api.get(`/api/items/${item.id}`)); refreshEpisode();
-                }, `${files.length} file(s) uploaded`)} />
-              <span className="muted small">Find a 3D model:</span>
-              {MODEL_SITES.map(([label, url]) => <a key={label} className="btn tiny" href={url(q)} target="_blank" rel="noreferrer">{label} ↗</a>)}
-            </div>
-            <div className="media-grid">
-              {dev?.assets.map((a) => (
-                <div key={a.id} className="asset-tile">
-                  <MediaPreview asset={a} />
-                  {!devLocked && <Confirm className="btn ghost tiny" text="Remove?" onYes={() => act(async () => { await api.del(`/api/assets/${a.id}`); apply(await api.get(`/api/items/${item.id}`)); refreshEpisode(); })}>✕</Confirm>}
-                </div>
-              ))}
-            </div>
-            {!dev?.assets.length && <p className="muted small">No images yet.</p>}
-          </div>
-
-          <div className="card">
-            <div className="section-head">
-              <h4 style={{ margin: 0 }}>Design details</h4>
-              <div className="row">
-                <button className="btn small" onClick={() => setShowSpec(!showSpec)}>{showSpec ? 'Hide' : 'Edit by hand'}</button>
-                {showSpec && <button className="btn primary small" disabled={!specDirty || busy} onClick={() => act(async () => afterChange(await api.put(`/api/items/${item.id}/spec`, { spec })), devLocked ? 'Saved into a new draft' : 'Design saved')}>Save</button>}
-              </div>
-            </div>
-            {showSpec ? SPEC_FIELDS[kindKey].map(([k, label]) => (
-              <Field key={k} label={label}><textarea rows={k === 'image_prompt' || k === 'look' ? 3 : 1} value={asText(spec[k])} onChange={(e) => setSpec({ ...spec, [k]: e.target.value })} /></Field>
-            )) : (
-              <dl className="spec-list">
-                {SPEC_FIELDS[kindKey].filter(([k]) => spec[k] && k !== 'search_terms').map(([k, label]) => <div key={k}><dt>{label}</dt><dd>{asText(spec[k])}</dd></div>)}
-              </dl>
-            )}
-          </div>
-        </div>
-
-        <Assistant
-          scope={`item:${item.id}`} title={`Design chat · ${item.name}`} reloadKey={chatRev}
-          intro={`Describe ${item.name}, or upload several reference photos and ask me to combine them. I see your reference images and your locked designs, follow your world style, and keep ${item.name} unique. Every change goes into a draft.`}
-          chips={[
-            'Combine my reference images into one design',
-            item.kind === 'character' ? 'Make it cuter and rounder' : 'Make it brighter and sunnier',
-            'Make it fit my world style better',
-            'Make it more different from my other characters',
-            'Write the Meshy 3D prompts for this design',
-            'Change the colors to…',
-          ]}
-          send={async (message) => { const r = await api.post(`/api/items/${item.id}/assistant`, { message }); await afterChange(r.item); return r; }}
-        />
-      </div>
+      {!local.ready && <small className="muted">Build Locally, Import Model and My World keep working without Local AI. Setup steps are in the README.</small>}
     </div>
   );
 }

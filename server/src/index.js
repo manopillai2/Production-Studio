@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import express from 'express';
 import multer from 'multer';
-import { db, one, all, run, tx, setSetting } from './db.js';
+import { db, one, all, run, tx, setSetting, getSetting } from './db.js';
 import { MEDIA_DIR, TMP_DIR, CLIENT_DIST } from './paths.js';
 import { probe, FFMPEG, FFPROBE, imageForAI } from './media.js';
 import { isEnglish, LANGS } from './langs.js';
@@ -12,7 +12,12 @@ import { preflight, runExportJob, toSrt, RESOLUTIONS } from './export.js';
 import * as providers from './providers.js';
 import { scanLyrics, musicPresets } from './offline.js';
 import * as meshy from './meshy.js';
+import * as localai from './localai.js';
 import { seedIfEmpty, patchSampleSpecs } from './seed.js';
+import { registerStudio } from './studio.js';
+import { seedSkySample } from './samples.js';
+import { flagStages } from './model.js';
+import { currentProfile, saveProfile } from './style.js';
 
 const PORT = Number(process.env.PORT || 5175);
 const app = express();
@@ -44,7 +49,12 @@ function saveUpload(file, ownerType, ownerId, category, body = {}) {
   const rel = path.join(relDir, `${Date.now()}-${safe}${ext}`);
   fs.renameSync(file.path, path.join(MEDIA_DIR, rel));
   let mime = file.mimetype || '';
-  if (BLENDER_EXT.includes(ext)) mime = 'model/x-blender-asset';
+  // Some browsers/tools send no type — fall back to the extension so durations/sizes are still read.
+  const BY_EXT = { '.wav': 'audio/wav', '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.aac': 'audio/aac', '.ogg': 'audio/ogg', '.flac': 'audio/flac',
+    '.mp4': 'video/mp4', '.mov': 'video/quicktime', '.webm': 'video/webm', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp' };
+  if ((!mime || mime === 'application/octet-stream') && BY_EXT[ext]) mime = BY_EXT[ext];
+  if (ext === '.glb') mime = 'model/gltf-binary';
+  else if (BLENDER_EXT.includes(ext)) mime = 'model/x-blender-asset';
   const meta = /^(video|audio|image)\//.test(mime) ? probe(path.join(MEDIA_DIR, rel)) : {};
   const width = meta.width ?? num(body.width), height = meta.height ?? num(body.height), duration = meta.duration ?? num(body.duration);
   const source = body.source || (BLENDER_EXT.includes(ext) || /blender/i.test(body.source || '') ? 'blender' : 'import');
@@ -76,11 +86,43 @@ app.get('/api/channel', h(() => {
   return { ...c, assets: all(`SELECT * FROM assets WHERE owner_type='channel' ORDER BY id`).map(assetOut) };
 }));
 app.put('/api/channel', h((req) => {
-  const merged = { ...channel(), ...req.body };
+  // The World Style is edited only on its own page (/api/world-style) — never overwrite it from here.
+  const { world_style, world_style_summary, world_style_updated_at, ...body } = req.body; // eslint-disable-line no-unused-vars
+  const merged = { ...channel(), ...body };
   delete merged.assets;
   setSetting('channel', merged);
   return merged;
 }));
+// ---------- World Style: one shared document every creation follows ----------
+// Full text → Claude (analysis, descriptions, Meshy prompt drafting). Short summary → offline Meshy prompt drafts (800-char limit).
+const worldStyleOut = () => {
+  const c = channel();
+  return { text: c.world_style || '', summary: c.world_style_summary || '', updated_at: c.world_style_updated_at || null, history: getSetting('world_style_history', []), profile: currentProfile() };
+};
+app.get('/api/world-style', h(() => worldStyleOut()));
+/** Hand edits to the extracted Style Profile (palette roles, finish, proportions, feature switches). */
+app.put('/api/world-style/profile', h((req) => {
+  const allowed = ['roles', 'finish', 'proportions', 'face', 'features', 'asymmetry', 'scenery', 'sky'];
+  const edits = Object.fromEntries(Object.entries(req.body || {}).filter(([k]) => allowed.includes(k)));
+  saveProfile(edits);
+  return worldStyleOut();
+}));
+app.post('/api/world-style/profile/reextract', h(() => { setSetting('world_style_profile', null); return worldStyleOut(); }));
+app.put('/api/world-style', h((req) => {
+  const text = String(req.body.text ?? '').trim();
+  const summary = String(req.body.summary ?? '').trim();
+  if (!text) throw new HttpError(400, 'The World Style can’t be empty.');
+  if (summary.length > 400) throw new HttpError(400, 'Keep the prompt summary to 400 characters or fewer (Meshy prompts are limited to 800).');
+  const c = channel();
+  if (text !== c.world_style || summary !== (c.world_style_summary || '')) {
+    const history = getSetting('world_style_history', []);
+    if (c.world_style) history.unshift({ text: c.world_style, summary: c.world_style_summary || '', at: c.world_style_updated_at || new Date().toISOString() });
+    setSetting('world_style_history', history.slice(0, 30));
+    setSetting('channel', { ...c, world_style: text, world_style_summary: summary, world_style_updated_at: new Date().toISOString() });
+  }
+  return worldStyleOut();
+}));
+
 app.post('/api/channel/assets', upload.array('files'), h((req) => {
   const category = req.body.category || 'logo';
   const out = req.files.map((f) => {
@@ -104,8 +146,14 @@ app.get('/api/items', h((req) => {
     const cover = latestApproved || versions.at(-1);
     const img = cover && one(`SELECT * FROM assets WHERE owner_type='version' AND owner_id=? AND mime LIKE 'image/%' ORDER BY id LIMIT 1`, cover.id);
     const spec = cover ? JSON.parse(one('SELECT spec FROM item_versions WHERE id=?', cover.id)?.spec || '{}') : {};
-    return { ...i, versions, cover: assetOut(img), spec, locked: !!latestApproved, approved_count: versions.filter((v) => v.status === 'approved').length };
-  });
+    // Rig status of the version projects use: approved rig = ready to animate; draft rig = waiting for your approval.
+    const rigA = cover && one(`SELECT status, notes FROM assets WHERE owner_type='version' AND owner_id=? AND category='rig' ORDER BY status='approved' DESC, id DESC LIMIT 1`, cover.id);
+    let rigType = null; try { rigType = rigA ? JSON.parse(rigA.notes || '{}').animation_type || 'biped' : null; } catch { rigType = 'biped'; }
+    const hasModel = !!(cover && one(`SELECT id FROM assets WHERE owner_type='version' AND owner_id=? AND category='model3d'`, cover.id));
+    const clips = cover ? one(`SELECT COUNT(*) n FROM assets WHERE owner_type='version' AND owner_id=? AND category='clip' AND status='approved'`, cover.id).n : 0;
+    return { ...i, versions, cover: assetOut(img), spec, locked: !!latestApproved, approved_count: versions.filter((v) => v.status === 'approved').length,
+      has_model: hasModel, rig: rigA ? { type: rigType, approved: rigA.status === 'approved', clips } : null };
+  }).filter((i) => (req.query.rigged === '1' ? i.rig : req.query.rigged === '0' ? !i.rig : true));
 }));
 app.post('/api/items', h((req) => {
   const { kind = 'character', name, description = '', notes = '', blender_link = '' } = req.body;
@@ -297,11 +345,17 @@ app.post('/api/lyrics/:id/approve', h((req) => {
   const l = need(one('SELECT * FROM lyrics WHERE id=?', +req.params.id), 'Lyrics draft');
   const lines = JSON.parse(l.sections).flatMap((s) => s.lines).filter((x) => x.ta?.trim() || x.en?.trim());
   if (!lines.length) throw new HttpError(400, 'Add at least one lyric line before approving.');
+  const ep = one('SELECT * FROM episodes WHERE id=?', l.episode_id);
+  const prevTiming = JSON.parse(ep.timing || '{}');
   tx(() => {
     run(`UPDATE lyrics SET status='draft' WHERE episode_id=? AND status='approved'`, l.episode_id);
     run(`UPDATE lyrics SET status='approved' WHERE id=?`, l.id);
     run('UPDATE episodes SET approved_lyrics_id=? WHERE id=?', l.id, l.episode_id);
   });
+  // A different approved version changes what later stages were built on: flag them (work is kept).
+  if ((prevTiming.lyrics_id && prevTiming.lyrics_id !== l.id) || (ep.approved_lyrics_id && ep.approved_lyrics_id !== l.id) || (!ep.approved_lyrics_id && prevTiming.lyrics_id)) {
+    flagStages(l.episode_id, { cast: 'Lyrics were changed and re-approved — re-run the analysis', timing: 'Lyrics changed — check every line’s timing', shots: 'Lyrics changed — check the shot plan', export: 'Lyrics changed after the last export' });
+  }
   touchEpisode(l.episode_id);
   return episodeFull(l.episode_id);
 }));
@@ -335,7 +389,14 @@ app.post('/api/episodes/:id/master', h((req) => {
   const id = +req.params.id;
   const a = need(one(`SELECT * FROM assets WHERE id=? AND owner_type='episode' AND owner_id=?`, req.body.asset_id, id), 'Audio take');
   if (a.status !== 'approved') throw new HttpError(400, 'Approve this take before making it the master track.');
+  const prev = one('SELECT master_audio_id FROM episodes WHERE id=?', id)?.master_audio_id;
   run('UPDATE episodes SET master_audio_id=? WHERE id=?', a.id, id);
+  // Shot start/end times past the new audio's end were set for the old track: drop them so shots follow the new length.
+  if (prev && prev !== a.id && a.duration) {
+    run('UPDATE scene_shots SET end_override=NULL WHERE episode_id=? AND end_override > ?', id, a.duration + 0.05);
+    run('UPDATE scene_shots SET start_override=NULL WHERE episode_id=? AND start_override >= ?', id, a.duration);
+  }
+  if (prev && prev !== a.id) flagStages(id, { timing: 'The final audio was replaced — re-check every line’s timing', shots: 'The final audio was replaced — shot timing may have moved', export: 'Audio changed after the last export' });
   touchEpisode(id);
   return episodeFull(id);
 }));
@@ -742,72 +803,8 @@ app.post('/api/episodes/:id/storyboard/build', h((req) => {
 app.post('/api/generate/music', h(async (req) => providers.generateMusic(req.body)));
 app.post('/api/generate/video', h(async (req) => providers.generateVideo(req.body)));
 
-// ---------- Meshy: design images + 3D models (background jobs, results saved into the item's draft) ----------
-meshy.setHooks({ ensureDraft });
-const itemSpec = (itemId) => JSON.parse(one('SELECT spec FROM item_versions WHERE item_id=? ORDER BY id DESC LIMIT 1', itemId)?.spec || '{}');
-app.get('/api/meshy/balance', h(async () => meshy.balance()));
-app.get('/api/meshy/credits', h(() => meshy.CREDITS));
-app.get('/api/meshy/jobs', h((req) => {
-  const ids = String(req.query.item_ids || '').split(',').map(Number).filter(Boolean);
-  if (!ids.length) return [];
-  return all(`SELECT * FROM jobs WHERE type LIKE 'meshy-%' AND json_extract(params,'$.item_id') IN (${ids.map(() => '?').join(',')})
-              AND created_at > datetime('now','-2 day') ORDER BY id DESC`, ...ids)
-    .map((j) => { const o = jobOut(j); delete o.params.refs; delete o.params.images; return o; });
-}));
-app.post('/api/items/:id/meshy/image', h(async (req) => {
-  const item = need(one('SELECT * FROM items WHERE id=?', +req.params.id), 'Item');
-  if (!providers.isActive('meshy')) throw new HttpError(400, 'Meshy is not active. Add your key and switch on paid generation in AI Connections.');
-  const spec = itemSpec(item.id);
-  const own = req.body.use_refs === false ? [] : await itemImages(item.id, 3);
-  const style = await styleImages(item.id, Math.min(3, 5 - own.length)); // Meshy accepts max 5 references
-  const world = worldContext(item.id);
-  const prompt = [
-    req.body.prompt || spec.image_prompt || `${item.name}: ${spec.look || item.description}`,
-    `Art style (match exactly): ${world.guide}`,
-    own.length ? `The first ${own.length} reference image(s) show ${item.name}: combine them into ONE consistent design.` : '',
-    style.length ? `The last ${style.length} reference image(s) are other characters/places from the same animated world: match their rendering style, materials and lighting, but do not copy them — ${item.name} must look unique.` : '',
-    item.kind === 'character' ? `Only ${item.name}, full body, clean plain background.` : 'Wide establishing shot, no characters.',
-  ].filter(Boolean).join('\n');
-  const model = Object.keys(meshy.CREDITS.image).includes(req.body.model) ? req.body.model : 'nano-banana-2';
-  const id = meshy.createJob('meshy-image', {
-    item_id: item.id, model, prompt, refs: [...own, ...style].map(meshy.dataUri),
-    remove_background: item.kind !== 'location', aspect_ratio: item.kind === 'location' ? '16:9' : '1:1',
-    multi_view: !!req.body.multi_view && item.kind !== 'location',
-  }, `Design image for ${item.name}`);
-  return jobOut(one('SELECT * FROM jobs WHERE id=?', id));
-}));
-app.post('/api/items/:id/meshy/3d', h(async (req) => {
-  const item = need(one('SELECT * FROM items WHERE id=?', +req.params.id), 'Item');
-  if (!providers.isActive('meshy')) throw new HttpError(400, 'Meshy is not active. Add your key and switch on paid generation in AI Connections.');
-  const spec = itemSpec(item.id);
-  const source = req.body.source === 'text' ? 'text' : 'images';
-  const pose = ['a-pose', 't-pose'].includes(req.body.pose) ? req.body.pose : 'none';
-  const prompt = String(req.body.prompt ?? spec.meshy_prompt ?? '').trim();
-  const texture_prompt = String(req.body.texture_prompt ?? spec.texture_prompt ?? '').trim();
-  let images = [];
-  if (source === 'images') {
-    const v = one('SELECT id FROM item_versions WHERE item_id=? ORDER BY id DESC LIMIT 1', item.id);
-    const ids = (req.body.asset_ids || []).map(Number).filter(Boolean);
-    let rows;
-    if (ids.length) rows = ids.map((aid) => one(`SELECT file_path FROM assets WHERE id=? AND mime LIKE 'image/%'`, aid)).filter(Boolean);
-    else {
-      // Meshy treats the FIRST image as the front view. Prefer the newest front/side/back design set (in that order);
-      // otherwise the newest images. Previews of earlier 3D models are never used as input.
-      const cands = all(`SELECT id, file_path, label FROM assets WHERE owner_type='version' AND owner_id=? AND mime LIKE 'image/%'
-                         AND source != 'generated:meshy-3d' ORDER BY id DESC LIMIT 8`, v?.id ?? 0);
-      const front = cands.find((a) => /\(front\)/.test(a.label));
-      rows = front
-        ? cands.filter((a) => a.file_path.startsWith(front.file_path.replace(/-\d+\.png$/, '-'))).sort((a, b) => a.id - b.id)
-        : cands.slice(0, 4);
-    }
-    images = (await toBufs(rows.map((r) => r.file_path))).slice(0, 4).map(meshy.dataUri);
-    if (!images.length) throw new HttpError(400, 'Add or create at least one image of this design first — or choose “From prompt”.');
-  } else if (!prompt) throw new HttpError(400, 'There is no Meshy prompt yet. Click “Write Meshy prompts with Claude” or type one.');
-  if (prompt.length > 800 || texture_prompt.length > 800) throw new HttpError(400, 'Meshy prompts must be 800 characters or fewer.');
-  const id = meshy.createJob('meshy-3d', { item_id: item.id, source, images, prompt, texture_prompt, budget: req.body.quality === 'budget', pose },
-    `3D model for ${item.name}`);
-  return jobOut(one('SELECT * FROM jobs WHERE id=?', id));
-}));
+// ---------- Stages 2–5 (asset cards, Build Locally, Local AI, Meshy, timing, 3D shots, export) ----------
+registerStudio(app, { h, need, HttpError, upload, touchEpisode, findMatch, libraryText, worldContext, cleanupTmp });
 
 // ---------- static ----------
 app.use('/media', express.static(MEDIA_DIR, { fallthrough: false }));
@@ -833,7 +830,10 @@ if (providers.migrateKeysOutOfDb()) {
 await seedIfEmpty();
 patchSampleSpecs();
 run(`DELETE FROM assets WHERE owner_type='version' AND owner_id NOT IN (SELECT id FROM item_versions)`); // tidy orphans
-meshy.resumeJobs();
+meshy.resumeJobs();      // polls already-submitted Meshy tasks only — never submits anything
+localai.stopStaleJobs();
+if (process.env.SKIP_SAMPLE !== '1') try { const s = seedSkySample(); if (s) console.log('  Added the sample project “Look Up at the Sky” (built locally, no paid calls).'); }
+catch (e) { console.error('  Could not create the sample project:', e.message); }
 app.listen(PORT, () => {
   console.log(`\n  Rhymes Automation API on http://localhost:${PORT}`);
   if (fs.existsSync(CLIENT_DIST)) console.log(`  Open the studio:  http://localhost:${PORT}\n`);

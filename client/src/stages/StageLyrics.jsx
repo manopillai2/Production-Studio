@@ -26,9 +26,10 @@ export default function StageLyrics() {
       <div className="stack">
         <div className="card">
           <div className="row wrap">
-            <b>Video length</b>
+            <b>Target video length</b>
             <DurationPicker value={target} onChange={(target_duration) => act(async () => setEpisode(await api.put(`/api/episodes/${episode.id}`, { target_duration })), `Target length ${mmss(target_duration)}`)} />
           </div>
+          <small className="muted">{episode.master_audio ? <>Planning target only — the approved audio in Stage 3 is <b>{mmss(episode.master_audio.duration)}</b> and sets the real length.</> : 'A planning target until the final audio is approved in Stage 3.'}</small>
           {sel && (
             <div className="length-meter">
               <div className="meter"><span style={{ width: `${Math.min(100, (est / target) * 100)}%` }} className={est > target * 1.15 ? 'over' : est < target * 0.7 ? 'under' : ''} /></div>
@@ -52,7 +53,7 @@ export default function StageLyrics() {
         )}
 
         {compare ? <Compare ids={compare} setIds={setCompare} lyrics={episode.lyrics} />
-          : sel ? <Editor key={sel.id} lyric={sel} onDuplicate={() => newDraft({ copy_from: sel.id }, 'Duplicated as a new version')} />
+          : sel ? <Editor key={sel.id} lyric={sel} prev={sel.source === 'assistant' ? [...episode.lyrics].filter((l) => l.id < sel.id).at(-1) : null} onDuplicate={() => newDraft({ copy_from: sel.id }, 'Duplicated as a new version')} />
             : (
               <div className="empty start-box">
                 <h3>Start your song</h3>
@@ -80,7 +81,11 @@ export default function StageLyrics() {
   );
 }
 
-function Editor({ lyric, onDuplicate }) {
+function Editor({ lyric, prev, onDuplicate }) {
+  // Lines the assistant changed compared with the version before (shown highlighted for review).
+  const prevLines = prev ? prev.sections.flatMap((s) => s.lines) : null;
+  const flatIndex = (si, li) => lyric.sections.slice(0, si).reduce((n, s) => n + s.lines.length, 0) + li;
+  const changed = (si, li, l) => { if (!prevLines) return false; const p = prevLines[flatIndex(si, li)]; return !p || p.ta !== l.ta || p.en !== l.en || p.cue !== l.cue; };
   const { refreshEpisode, toast, episode, setEpisode } = useStudio();
   const en = isEnglish(episode.language);
   const L = langName(episode.language);
@@ -130,17 +135,17 @@ function Editor({ lyric, onDuplicate }) {
     <div className="card">
       <div className="row">
         <input className="title-input grow" value={title} disabled={locked} onChange={(e) => setTitle(e.target.value)} />
-        <Badge status={lyric.status} text={locked ? '🔒 Final' : 'Draft'} />
+        <Badge status={lyric.status} text={locked ? 'Approved' : 'Draft'} />
         {!locked && <span className={`save-state ${saveState}`}>{{ saved: 'Saved', pending: 'Editing…', saving: 'Saving…', error: 'Not saved' }[saveState]}</span>}
       </div>
       {locked && (
         <div className="locked">
-          🔒 These are the final lyrics for this project (used for characters, music, storyboard and captions).
+          ✓ These are the approved lyrics. Stage 2 analyzes them, and Stages 3–5 use them for timing, shots and captions.
           <Confirm className="btn small" text="Unlock to edit? The project will have no final lyrics until you finalize again." onYes={() => act(async () => setEpisode(await api.post(`/api/lyrics/${lyric.id}/unlock`)), 'Lyrics unlocked — you can edit them now')}>Unlock to edit</Confirm>
         </div>
       )}
       <div className="row wrap">
-        {!locked && <button className="btn approve" disabled={busy || saveState !== 'saved'} onClick={() => act(async () => { await api.post(`/api/lyrics/${lyric.id}/approve`); await refreshEpisode(); }, 'Lyrics finalized — next: Characters & Scenery')}>🔒 Finalize these lyrics</button>}
+        {!locked && <button className="btn approve" disabled={busy || saveState !== 'saved'} onClick={() => act(async () => { await api.post(`/api/lyrics/${lyric.id}/approve`); await refreshEpisode(); }, 'Lyrics approved — Stage 2 will analyze this version')}>✓ Approve Lyrics</button>}
         <button className="btn" onClick={onDuplicate}>⧉ Duplicate</button>
         {!locked && <button className="btn" onClick={() => setPaste({ text: '', lang: 'both' })}>📋 Paste lyrics</button>}
         {!locked && <Confirm text="Delete this version?" onYes={() => act(async () => { await api.del(`/api/lyrics/${lyric.id}`); await refreshEpisode(); }, 'Version deleted')}>Delete version</Confirm>}
@@ -167,7 +172,7 @@ function Editor({ lyric, onDuplicate }) {
             <thead><tr>{en ? <th>English (sung)</th> : <><th>{L} (sung)</th><th>English meaning (for you)</th></>}<th>Action cue (what happens on screen)</th><th /></tr></thead>
             <tbody>
               {s.lines.map((l, li) => (
-                <tr key={li}>
+                <tr key={li} className={changed(si, li, lyric.sections[si]?.lines[li] || l) ? 'changed' : ''} title={changed(si, li, lyric.sections[si]?.lines[li] || l) ? 'Changed by the assistant — review it' : ''}>
                   {!en && <td><input className="ta" value={l.ta} disabled={locked} onChange={(e) => updLine(si, li, 'ta', e.target.value)} /></td>}
                   <td><input className={en ? '' : 'meaning'} value={l.en} disabled={locked} onChange={(e) => updLine(si, li, 'en', e.target.value)} /></td>
                   <td><input className="cue" value={l.cue} disabled={locked} placeholder="e.g. monkey swings on the tree" onChange={(e) => updLine(si, li, 'cue', e.target.value)} /></td>

@@ -10,13 +10,14 @@ const LEXICON = [
   ['character', 'Frog', 'frog', 'தவளை'], ['character', 'Squirrel', 'squirrel', 'அணில்'], ['character', 'Crow', 'crow', 'காகம்', 'காக்கா'],
   ['character', 'Bear', 'bear', 'கரடி'], ['character', 'Owl', 'owl', 'ஆந்தை'], ['character', 'Child', 'child', 'kids', 'baby', 'குழந்தை', 'பாப்பா'],
   ['character', 'Grandma', 'grandma', 'granny', 'பாட்டி'], ['character', 'Mother', 'mother', 'mummy', 'amma', 'அம்மா'],
-  ['location', 'River', 'river', 'stream', 'ஆறு', 'நதி'], ['location', 'Mountain', 'mountain', 'hill', 'மலை'], ['location', 'Meadow', 'meadow', 'field', 'grass', 'புல்வெளி', 'வயல்'],
+  ['character', 'Sun', 'sun', 'sunny', 'sunshine', 'சூரியன்'], ['character', 'Moon', 'moon', 'நிலா', 'சந்திரன்'], ['prop', 'Cloud', 'cloud', 'clouds', 'மேகம்'], ['prop', 'Star', 'star', 'stars', 'twinkle', 'நட்சத்திர'],
+  ['location', 'River', 'river', 'stream', 'ஆறு', 'நதி'], ['location', 'Mountain', 'mountain', 'மலை'], ['location', 'Hill', 'hill', 'hills', 'குன்று'], ['location', 'Meadow', 'meadow', 'field', 'grass', 'புல்வெளி', 'வயல்'],
   ['location', 'Forest', 'forest', 'jungle', 'woods', 'காடு'], ['location', 'Sea / Beach', 'sea', 'beach', 'ocean', 'கடல்'], ['location', 'Garden', 'garden', 'தோட்டம்'],
   ['location', 'Village', 'village', 'கிராமம்', 'ஊர்'], ['location', 'House', 'house', 'home', 'வீடு'], ['location', 'School', 'school', 'பள்ளி'],
-  ['location', 'Farm', 'farm', 'பண்ணை'], ['location', 'Night sky', 'night', 'sky', 'இரவு', 'வானம்'], ['location', 'Pond', 'pond', 'lake', 'குளம்'],
+  ['location', 'Farm', 'farm', 'பண்ணை'], ['location', 'Night sky', 'night sky', 'starry', 'இரவு வானம்'], ['location', 'Pond', 'pond', 'lake', 'குளம்'],
   ['location', 'Bridge', 'bridge', 'பாலம்'],
   ['prop', 'Carrot', 'carrot', 'கேரட்'], ['prop', 'Tree', 'tree', 'மரம்'], ['prop', 'Flowers', 'flower', 'பூ', 'மலர்'], ['prop', 'Ball', 'ball', 'பந்து'],
-  ['prop', 'Moon', 'moon', 'நிலா', 'சந்திரன்'], ['prop', 'Sun', 'sun', 'சூரியன்'], ['prop', 'Stars', 'star', 'நட்சத்திர'], ['prop', 'Boat', 'boat', 'படகு'],
+  ['prop', 'Boat', 'boat', 'படகு'],
   ['prop', 'Banana', 'banana', 'வாழைப்பழ'], ['prop', 'Mango', 'mango', 'மாம்பழ'], ['prop', 'Drum', 'drum', 'மேளம்'], ['prop', 'Rain', 'rain', 'மழை'],
 ];
 

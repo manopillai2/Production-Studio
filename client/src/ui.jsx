@@ -1,5 +1,5 @@
-import { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react';
-import { resLabel, fmtTime } from './api.js';
+import { createContext, useContext, useEffect, useRef, useState, useCallback, lazy, Suspense } from 'react';
+import { api, resLabel, fmtTime } from './api.js';
 
 export const StudioContext = createContext(null);
 export const useStudio = () => useContext(StudioContext);
@@ -175,14 +175,23 @@ export function MediaPreview({ asset, compact, controls = true }) {
   );
 }
 
-/** Rotatable 3D preview (.glb) — model-viewer is loaded only when a 3D file is shown. */
-export function Model3D({ url }) {
-  const [ready, setReady] = useState(false);
-  useEffect(() => { import('@google/model-viewer').then(() => setReady(true)).catch(() => {}); }, []);
-  if (!ready) return <div className="media-empty">Loading 3D viewer…</div>;
+/** Rotatable 3D preview (.glb) — the three.js viewer is loaded only when a 3D file is shown. */
+const Viewer3DLazy = lazy(() => import('./engine/Viewer3D.jsx'));
+export function Model3D({ url, height = 200, autoPlay = false }) {
+  return <Suspense fallback={<div className="media-empty">Loading 3D viewer…</div>}><Viewer3DLazy url={url} height={height} autoPlay={autoPlay} /></Suspense>;
+}
+
+/** "Needs review" banner: an approved upstream change affected this stage. Saved work is kept. */
+export function ReviewBanner({ flagKey }) {
+  const { episode, setEpisode } = useStudio();
+  const [act, busy] = useAction();
+  const f = episode?.review_flags?.[flagKey];
+  if (!f) return null;
   return (
-    <model-viewer src={url} camera-controls="" auto-rotate="" shadow-intensity="0.8" exposure="1.05" interaction-prompt="none"
-      style={{ width: '100%', aspectRatio: '16 / 10', background: '#f1f4f7', display: 'block' }} />
+    <div className="review-banner">
+      <b>Needs review:</b> {f.reason}. Everything saved here is kept — check it, then mark it reviewed.
+      <button className="btn small" disabled={busy} onClick={() => act(async () => setEpisode(await api.post(`/api/episodes/${episode.id}/review/${flagKey}/clear`)), 'Marked as reviewed')}>Mark as reviewed</button>
+    </div>
   );
 }
 
@@ -212,9 +221,9 @@ export function NeedEpisode({ children }) {
   return children;
 }
 
-export function Confirm({ text, onYes, children, className = 'btn ghost small' }) {
+export function Confirm({ text, onYes, children, className = 'btn ghost small', disabled = false, title }) {
   const [ask, setAsk] = useState(false);
-  if (!ask) return <button className={className} onClick={() => setAsk(true)}>{children}</button>;
+  if (!ask || disabled) return <button className={className} disabled={disabled} title={title} onClick={() => setAsk(true)}>{children}</button>;
   return (
     <span className="confirm">{text} <button className="btn danger small" onClick={() => { setAsk(false); onYes(); }}>Yes</button>
       <button className="btn ghost small" onClick={() => setAsk(false)}>No</button></span>

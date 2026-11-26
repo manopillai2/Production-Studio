@@ -157,6 +157,78 @@ CREATE TABLE IF NOT EXISTS cast_suggestions (
 );
 `);
 
+// ---- v0.5: five-stage workflow ----
+addCol('episodes', 'review_flags', `TEXT DEFAULT '{}'`); // {cast|timing|shots|export: {reason, at}}
+addCol('episodes', 'timing', `TEXT DEFAULT '{}'`);       // {lyrics_id, audio_id, approved, lines:[{i,text,start,end}]}
+addCol('episodes', 'director', `TEXT DEFAULT '{}'`);     // Stage 4 direction for Claude + Claude's last response {message, last:{mode,reply,did[],cannot[],at}}
+db.exec(`
+CREATE TABLE IF NOT EXISTS asset_cards (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  episode_id INTEGER NOT NULL REFERENCES episodes(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL,                 -- character | location | prop
+  name TEXT NOT NULL,
+  description TEXT DEFAULT '',
+  usages TEXT DEFAULT '[]',           -- [lyric line index]
+  signature TEXT DEFAULT '',          -- recognizable features (recurring characters)
+  match_item_id INTEGER,              -- My World match found by the search
+  decision TEXT DEFAULT 'pending',    -- pending | reuse | new
+  prompt TEXT DEFAULT '',
+  texture_prompt TEXT DEFAULT '',
+  pose TEXT DEFAULT 'none',
+  status TEXT DEFAULT 'draft',        -- match | draft | generating | review | approved | failed
+  model_path TEXT, thumb_path TEXT, model_source TEXT,
+  job_id INTEGER, error TEXT,
+  approved_at TEXT,
+  item_id INTEGER, saved_version_id INTEGER, saved_at TEXT, -- My World copy (independent of browser download)
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS scene_shots (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  episode_id INTEGER NOT NULL REFERENCES episodes(id) ON DELETE CASCADE,
+  position INTEGER DEFAULT 0,
+  title TEXT DEFAULT '',
+  line_from INTEGER, line_to INTEGER, -- lyric lines covered (timing comes from Stage 3)
+  start_override REAL, end_override REAL,
+  setting TEXT DEFAULT '{}',          -- {card_id}
+  actors TEXT DEFAULT '[]',           -- [{card_id, pos, rot, scale, motion:{type,...}, clip:{asset_id,name,speed,offset}}]
+  camera TEXT DEFAULT '{}',           -- {preset, ...params}
+  lighting TEXT DEFAULT '{}',         -- {preset}
+  notes TEXT DEFAULT '',
+  created_at TEXT DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS meshy_calls (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ts TEXT DEFAULT (datetime('now')),
+  method TEXT, path TEXT, purpose TEXT, episode_id INTEGER, ref TEXT
+);
+`);
+
+addCol('asset_cards', 'method', `TEXT DEFAULT 'procedural'`); // procedural | local_ai | import | meshy | library
+addCol('asset_cards', 'recipe', `TEXT`);                      // editable procedural recipe (JSON)
+addCol('asset_cards', 'mapping', `TEXT DEFAULT '{}'`);        // {template, applied[], unsupported[], message}
+addCol('asset_cards', 'ref_image_path', `TEXT`);              // reference image for Local AI
+addCol('asset_cards', 'revision_id', `INTEGER`);              // revision currently shown
+addCol('asset_cards', 'user_notes', `TEXT DEFAULT ''`);       // the user's own ideas for this asset — Claude must follow them
+addCol('episodes', 'cast_notes', `TEXT DEFAULT '{}'`);        // {characters, scenery}: the user's ideas for Stage 2 — Claude must follow them
+db.exec(`
+CREATE TABLE IF NOT EXISTS card_revisions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  card_id INTEGER NOT NULL REFERENCES asset_cards(id) ON DELETE CASCADE,
+  n INTEGER NOT NULL,
+  method TEXT NOT NULL,              -- procedural | local_ai | import | meshy | recolor | library
+  recipe TEXT,                       -- procedural recipe at this revision
+  model_path TEXT,
+  note TEXT DEFAULT '',
+  created_at TEXT DEFAULT (datetime('now'))
+);
+`);
+
+addCol('card_revisions', 'style_version', `TEXT`);
+addCol('card_revisions', 'rig', `TEXT`);
+addCol('asset_cards', 'rig_type', `TEXT`); // biped | quadruped | none — which skeleton this character needs (Claude decides; user can override)
+addCol('asset_cards', 'rig_note', `TEXT`); // why // Meshy rig made with this result: {rig, clips:[{name,path}], meshy_rig_task_id, created} // which World Style version produced this result
+
 // v0.3: one language per project ("both" was Tamil + English → Tamil with English meaning).
 db.exec(`UPDATE episodes SET language='ta' WHERE language IS NULL OR language='both'`);
 db.exec(`UPDATE episodes SET caption_language='native' WHERE caption_language IN ('both','ta')`);
