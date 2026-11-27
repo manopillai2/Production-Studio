@@ -270,6 +270,7 @@ function WorldLookPanel({ doc, setDoc, claudeOn }) {
         {pick('houses', 'Colourful houses')}
         {pick('wind', 'Wind')}
         {pick('birds', 'Birds')}
+        {pick('detail', 'Extra detail')}
         {pick('transition', 'Transitions')}
         <label className="field"><span>Ground colour</span><div className="row"><input type="color" value={L.ground || '#8CCB6E'} onChange={(e) => set({ ground: e.target.value })} />{L.ground ? <button className="btn tiny ghost" onClick={() => set({ ground: '' })}>Auto</button> : <span className="small muted">auto (palette)</span>}</div></label>
         <label className="field"><span>Hill colour</span><div className="row"><input type="color" value={L.hill_tint || '#6CC45E'} onChange={(e) => set({ hill_tint: e.target.value })} />{L.hill_tint ? <button className="btn tiny ghost" onClick={() => set({ hill_tint: '' })}>Auto</button> : <span className="small muted">auto (palette)</span>}</div></label>

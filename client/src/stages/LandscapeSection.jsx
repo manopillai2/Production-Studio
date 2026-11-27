@@ -6,7 +6,7 @@ import { SceneEngine } from '../engine/SceneEngine.js';
 import { LOOK_DEFAULTS, LOOK_OPTIONS } from '../engine/Landscape.js';
 
 const TIMES = ['morning', 'day', 'sunset', 'night'];
-const FIELDS = [['sky', 'Sky'], ['clouds', 'Clouds'], ['hills', 'Far hills'], ['trees', 'Trees'], ['dressing', 'Flowers & bushes'], ['river', 'River (flowing water)'], ['houses', 'Colourful houses'], ['wind', 'Wind'], ['birds', 'Birds']];
+const FIELDS = [['sky', 'Sky'], ['clouds', 'Clouds'], ['hills', 'Far hills'], ['trees', 'Trees'], ['dressing', 'Flowers & bushes'], ['river', 'River (flowing water)'], ['houses', 'Colourful houses'], ['wind', 'Wind'], ['birds', 'Birds'], ['detail', 'Extra detail']];
 const SKY_LABEL = { auto: 'From the lighting', clear: 'Clear', soft: 'Soft pastel', storybook: 'Storybook' };
 
 /**
@@ -31,6 +31,13 @@ export default function LandscapeSection({ episode, cards }) {
   }, mode === 'ai' ? 'Claude designed the landscape. Stage 4 uses it automatically.' : 'Simple landscape made from the lyrics');
   const setProject = (p) => act(async () => { await api.put(`/api/episodes/${episode.id}/look`, p); await load(); refreshEpisode(); });
   const setPlace = (id, p) => act(async () => { setSt(await api.put(`/api/cards/${id}/landscape`, p)); refreshEpisode(); });
+  /** Save one place's landscape to My World (a copy, with a picture of it) and offer the .json download. */
+  const savePlace = (id, image) => act(async () => {
+    const r = await api.post(`/api/cards/${id}/landscape/save`, { image }); setSt(r);
+    const a = document.createElement('a'); a.href = r.download_url; a.download = ''; document.body.appendChild(a); a.click(); a.remove();
+    toast('Landscape saved to My World. A .json download was also offered — your browser decides where it goes.');
+  });
+  const unsaved = st.sceneries.filter((p) => p.model_url && (!p.saved || p.saved.changed));
   const L = { ...LOOK_DEFAULTS, ...st.look };
 
   return (
@@ -60,20 +67,28 @@ export default function LandscapeSection({ episode, cards }) {
         ))}
       </div>
       <h4>Each place</h4>
+      {unsaved.length > 0 && <div className="hint warn">{unsaved.length} landscape{unsaved.length > 1 ? 's' : ''} not saved to My World: {unsaved.map((p) => p.name).join(', ')}. Use “Download landscape & save to My World” on each place.</div>}
       {!st.sceneries.length && <p className="small muted">No scenery cards yet. Analyze the lyrics or add a Scenery card above; each place then gets its own landscape and preview here.</p>}
       <div className="place-grid">
-        {st.sceneries.map((p) => <Place key={p.card_id} place={p} look={st.look} roles={st.roles} onChange={(x) => setPlace(p.card_id, x)} />)}
+        {st.sceneries.map((p) => <Place key={p.card_id} place={p} look={st.look} roles={st.roles} busy={busy} onChange={(x) => setPlace(p.card_id, x)} onSave={(img) => savePlace(p.card_id, img)} />)}
       </div>
     </div>
   );
 }
 
-function Place({ place, look, roles, onChange }) {
+function Place({ place, look, roles, onChange, onSave, busy }) {
   const own = place.landscape || {};
   const base = { ...LOOK_DEFAULTS, ...look };
+  const eng = useRef(null);
+  const sv = place.saved; const needsSave = !!place.model_url && (!sv || sv.changed);
+  const save = () => { let img = null; try { const e = eng.current; if (e) { e.renderAt(3.2); img = e.renderer.domElement.toDataURL('image/jpeg', 0.88); } } catch { img = null; } onSave(img); };
   return (
-    <div className="place">
-      <LandscapePreview place={place} look={look} roles={roles} />
+    <div className={`place ${needsSave ? 'unsaved' : ''}`}>
+      <LandscapePreview place={place} look={look} roles={roles} onEngine={(e) => { eng.current = e; }} />
+      {needsSave
+        ? <div className="hint warn">{sv ? `Changed since it was saved to My World (${sv.version})` : 'Not saved to My World'}</div>
+        : sv && <div className="hint ok">Saved in My World as “{sv.name}” {sv.version}</div>}
+      {place.model_url && <button className={`btn small ${needsSave ? 'primary' : ''}`} disabled={busy} onClick={save}>{needsSave ? '⬇ Download landscape & save to My World' : '⬇ Download landscape again'}</button>}
       <div className="row wrap between"><b>{place.name}</b>{place.usages?.length > 0 && <span className="small muted">lines {place.usages.map((i) => i + 1).join(', ')}</span>}</div>
       {own.why && <p className="small muted place-why">{own.why}</p>}
       <div className="param-grid">
@@ -95,7 +110,7 @@ function Place({ place, look, roles, onChange }) {
 }
 
 /** A wide 3D view of one place with its landscape, made by the Stage 4 engine (so it looks exactly like the video). */
-function LandscapePreview({ place, look, roles }) {
+function LandscapePreview({ place, look, roles, onEngine }) {
   const canvas = useRef(); const engine = useRef(null);
   const [state, setState] = useState('idle');
   const key = JSON.stringify([place.model_url, place.landscape, look]);
@@ -115,6 +130,7 @@ function LandscapePreview({ place, look, roles }) {
         });
         if (!alive) return;
         engine.current.renderAt(3.2);
+        onEngine?.(engine.current);
         setState('ready');
       } catch (e) { if (alive) setState(`error: ${e.message}`); }
     }, 250);

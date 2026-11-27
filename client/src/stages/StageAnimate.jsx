@@ -189,6 +189,7 @@ function LookPanel({ look, title, setLook }) {
             {sel('houses', 'Colourful houses')}
             {sel('wind', 'Wind (swaying trees & flowers)')}
             {sel('birds', 'Birds in the sky')}
+            {sel('detail', 'Extra detail (flower beds, bunting, rainbow, balloons, butterflies)')}
             <label className="field"><span>Ground colour</span><div className="row"><input type="color" value={L.ground || '#8CCB6E'} onChange={(e) => setLook({ ground: e.target.value })} />{L.ground ? <button className="btn tiny ghost" onClick={() => setLook({ ground: '' })}>Auto</button> : <span className="small muted">auto (World Style)</span>}</div></label>
             <label className="field"><span>Hill colour</span><div className="row"><input type="color" value={L.hill_tint || '#6CC45E'} onChange={(e) => setLook({ hill_tint: e.target.value })} />{L.hill_tint ? <button className="btn tiny ghost" onClick={() => setLook({ hill_tint: '' })}>Auto</button> : <span className="small muted">auto (World Style)</span>}</div></label>
           </div>
@@ -579,14 +580,14 @@ function ClipPicker({ actor, asset, onChange, reloadScene }) {
   );
 }
 
-const CAMERA_LABEL = { wide: 'Still (wide)', 'tilt-up': 'Tilt up (look up)', pan: 'Pan (slide sideways)', 'dolly-in': 'Dolly in (move closer)', closeup: 'Close-up (on one)', follow: 'Follow (track one)', orbit: 'Orbit (circle around)', group: 'Group (keep everyone in)' };
+const CAMERA_LABEL = { crane: 'Crane down (establishing)', wide: 'Still (wide)', 'tilt-up': 'Tilt up (look up)', pan: 'Pan (slide sideways)', 'dolly-in': 'Dolly in (move closer)', closeup: 'Close-up (on one)', follow: 'Follow (track one)', orbit: 'Orbit (circle around)', group: 'Group (keep everyone in)' };
 
 /** This shot's landscape: the project look, or this shot's own sky / clouds / hills / trees / dressing. Stored in lighting.look. */
 function ShotLandscape({ shot, scene, patch }) {
   const own = shot.lighting?.look || {};
   const base = { ...LOOK_DEFAULTS, ...(scene.look || {}) };
   const set = (k, v) => { const n = { ...own }; if (v === 'project') delete n[k]; else n[k] = v; patch({ lighting: { ...(shot.lighting || { preset: 'day' }), look: n } }); };
-  const keys = [['sky', 'Sky'], ['clouds', 'Clouds'], ['hills', 'Far hills'], ['trees', 'Trees'], ['dressing', 'Flowers & bushes'], ['river', 'River'], ['houses', 'Houses'], ['wind', 'Wind'], ['birds', 'Birds']];
+  const keys = [['sky', 'Sky'], ['clouds', 'Clouds'], ['hills', 'Far hills'], ['trees', 'Trees'], ['dressing', 'Flowers & bushes'], ['river', 'River'], ['houses', 'Houses'], ['wind', 'Wind'], ['birds', 'Birds'], ['detail', 'Extra detail']];
   const changed = keys.filter(([k]) => own[k]).length;
   return (
     <details className="tool">

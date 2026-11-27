@@ -6,6 +6,7 @@ import { loadGLTF, measureBox } from './three-common.js';
 import { analyseRig, buildClip, MOVES } from './MoveMaker.js';
 import { addFace, vocalEnvelope, mouthOpen, mouthShape } from './FaceRig.js';
 import { buildLandscape, blobShadowTexture, lookOf, SKY } from './Landscape.js';
+import { buildEquipment } from './Playground.js';
 
 /** Shot start/end times from lyric timestamps (Stage 3). Gaps (instrumental breaks) belong to the shot before. */
 export function shotTimes(shots, timing, duration) {
@@ -35,12 +36,12 @@ export const LIGHTING = {
 export const MOTIONS = ['none', 'rise', 'float', 'drift', 'bounce', 'twinkle', 'spin', 'sway', 'path', 'circle'];
 /** Motions that carry a character across the ground (a rigged character walks or runs during them). */
 export const TRAVEL_MOTIONS = ['path', 'drift', 'bounce', 'circle'];
-export const CAMERAS = ['wide', 'tilt-up', 'pan', 'dolly-in', 'closeup', 'follow', 'orbit', 'group'];
+export const CAMERAS = ['wide', 'tilt-up', 'pan', 'dolly-in', 'closeup', 'follow', 'orbit', 'group', 'crane'];
 /** How much of the frame the subject fills. 'auto' = the camera move's natural size. */
 export const SHOT_SIZES = ['auto', 'extreme-wide', 'wide', 'full', 'medium', 'closeup'];
 export const SIZE_LABEL = { auto: 'Auto (from the move)', 'extreme-wide': 'Extreme wide: the whole place', wide: 'Wide: place + characters', full: 'Full: whole body fills the frame', medium: 'Medium: waist up', closeup: 'Close-up: face' };
 /** Each camera move's natural shot size. */
-export const PRESET_SIZE = { wide: 'wide', 'tilt-up': 'full', pan: 'wide', 'dolly-in': 'wide', closeup: 'closeup', follow: 'full', orbit: 'full', group: 'full' };
+export const PRESET_SIZE = { wide: 'wide', 'tilt-up': 'full', pan: 'wide', 'dolly-in': 'wide', closeup: 'closeup', follow: 'full', orbit: 'full', group: 'full', crane: 'wide' };
 const CLOSER = { 'extreme-wide': 'wide', wide: 'full', full: 'medium', medium: 'closeup', closeup: 'closeup' };
 /** Transitions INTO a shot. 'auto' = dissolve at a new section (verse → chorus), a cut inside a section. */
 export const TRANSITIONS = ['auto', 'cut', 'dissolve', 'dip-white', 'iris', 'wipe'];
@@ -337,6 +338,14 @@ export class SceneEngine {
           group.add(fit.obj); settingObj = fit.obj;
         } else this.warnings.push(`Shot “${s.title}”: could not load the setting ${setting.name}.`);
       } else if (s.setting?.card_id) this.warnings.push(`Shot “${s.title}”: its setting is no longer approved in Stage 2.`);
+      // Playground equipment with moving parts (seesaw, swings, slide, merry-go-round), standing on the scenery.
+      const equip = [];
+      for (const e of Array.isArray(s.setting?.equipment) ? s.setting.equipment : []) {
+        const eq = buildEquipment(e); if (!eq) { this.warnings.push(`Shot “${s.title}”: unknown equipment “${e.type}”.`); continue; }
+        const p = e.pos || [0, 0, 0]; eq.group.position.y = surface(p[0], p[2]) + Number(p[1] || 0);
+        eq.group.traverse((m) => { if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; } });
+        group.add(eq.group); equip.push(eq);
+      }
       const actors = [];
       for (const a of s.actors || []) {
         const asset = byCard[a.card_id];
@@ -400,7 +409,7 @@ export class SceneEngine {
       const land = buildLandscape({ look: shotLook, preset, roles: this.roles, setRadius, seed: (s.setting?.card_id || 1) * 97 + 11, sunDir: new THREE.Vector3(...L.sunPos), keepClear });
       group.add(land.group);
       this.scene.add(group);
-      this.groups.push({ group, actors, shot: s, surface, focusY, settingObj, land, look: shotLook, preset, camAdjust: { dy: 0, toward: 0, yaw: 0 } });
+      this.groups.push({ group, actors, equip, shot: s, surface, focusY, settingObj, land, look: shotLook, preset, camAdjust: { dy: 0, toward: 0, yaw: 0 } });
     }
     // Section of each shot (verse / chorus …) for automatic transitions.
     this.groups.forEach((g, k) => { g.section = this._sectionOf(g.shot); g.transition = this._transitionInto(k); });
@@ -475,7 +484,7 @@ export class SceneEngine {
       if (act.hand) { params.hand = act.hand; params.side = act.hand; }
       const clip = buildClip(rig, act.move, params, act.move);
       const action = mixer.clipAction(clip); action.play(); action.setEffectiveWeight(0);
-      body.actions.push({ action, at: Math.max(0, Number(act.at || 0)), dur: clip.duration, move: act.move });
+      body.actions.push({ action, at: Math.max(0, Number(act.at || 0)), dur: clip.duration, move: act.move, hold: !!act.hold });
       labels.push(act.move);
     }
     body.label = labels.join(' → ') || 'rig';
@@ -483,6 +492,38 @@ export class SceneEngine {
   }
 
   /** Blend this character's layers for shot time u: walk while travelling, idle when standing, actions on top. */
+  /** Where a riding actor is at shot time u: {pos (group space), rot [x,y,z], seat (Object3D)} or null. */
+  _rideAt(g, a, u) {
+    const r = a.actor.ride; const eq = r && g.equip?.[Number(r.equip ?? 0)];
+    if (!eq) return null;
+    const inv = new THREE.Matrix4().copy(g.group.matrixWorld).invert();
+    if (eq.type === 'slide' && r.climb && u < Number(r.climb.at || 0) + Number(r.climb.dur || 2)) { // climbs the ladder first, standing
+      const c = r.climb; const k = (u - Number(c.at || 0)) / Math.max(0.5, Number(c.dur || 2));
+      const at = eq.climbAt(k); const w = eq.group.localToWorld(at.pos.clone()).applyMatrix4(inv);
+      return { pos: w, rot: [0, eq.group.rotation.y, 0], seat: null, stand: true };
+    }
+    if (eq.type === 'slide') { // sits at the top, then slides down (ride.at / ride.dur seconds), and stays at the bottom
+      const k = Math.min(1, Math.max(0, (u - Number(r.at ?? 1)) / Math.max(0.3, Number(r.dur ?? 1.6)))); const kk = k * k * (2 - k * 0.6) / 1.4;
+      const at = eq.slideAt(Math.min(1, kk)); const w = eq.group.localToWorld(at.pos.clone()).applyMatrix4(inv);
+      return { pos: w, rot: [at.pitch, eq.group.rotation.y, 0], seat: null, slideK: k };
+    }
+    const seat = eq.seats[r.seat || 'a']; if (!seat) return null;
+    const wp = seat.getWorldPosition(new THREE.Vector3()).applyMatrix4(inv);
+    const gq = new THREE.Quaternion(); g.group.getWorldQuaternion(gq);
+    const q = gq.invert().multiply(seat.getWorldQuaternion(new THREE.Quaternion()));
+    const e = new THREE.Euler().setFromQuaternion(q, 'YXZ');
+    return { pos: wp, rot: [e.x, e.y + Number(r.yaw || 0), e.z], seat };
+  }
+  /** Put the rider's hips exactly on the seat (the sitting pose lowers the hips; this removes any gap or overlap). */
+  _seatHips(g, a, ride) {
+    const hb = a.body.rig.map.hips && a.body.obj.getObjectByName(a.body.rig.map.hips.name); if (!hb) return;
+    a.holder.updateMatrixWorld(true);
+    const inv = new THREE.Matrix4().copy(g.group.matrixWorld).invert();
+    const hp = hb.getWorldPosition(new THREE.Vector3()).applyMatrix4(inv);
+    const lift = Number(a.actor.ride?.lift ?? 0.06) * Number(a.actor.scale ?? 1); // hips sit a little above the seat surface
+    a.holder.position.x += ride.pos.x - hp.x; a.holder.position.z += ride.pos.z - hp.z; a.holder.position.y += ride.pos.y + lift - hp.y;
+    a.holder.updateMatrixWorld(true);
+  }
   _poseBody(a, u) {
     const B = a.body; const fade = (x, w) => Math.min(1, Math.max(0, x / w));
     // Undo last frame's life-layer turns first: the mixer only rewrites a bone when its animated value changes, so
@@ -500,7 +541,7 @@ export class SceneEngine {
     }
     let actW = 0;
     for (const x of B.actions) {
-      const w = u >= x.at && u <= x.at + x.dur ? Math.min(fade(u - x.at, 0.25), fade(x.at + x.dur - u, 0.3)) : 0;
+      const w = u >= x.at && u <= x.at + x.dur ? Math.min(x.at <= 0.01 ? 1 : fade(u - x.at, 0.25), x.hold ? 1 : fade(x.at + x.dur - u, 0.3)) : 0;
       x.action.time = Math.min(x.dur, Math.max(0, u - x.at));
       x.action.setEffectiveWeight(w * (1 - actW)); actW = Math.min(1, actW + w);
     }
@@ -510,7 +551,8 @@ export class SceneEngine {
     B.mixer.update(0);
     // Ground contact: keep the lower foot on the floor (the poses and the walk clip don't know where the floor is).
     // Sinking is always corrected; a small float is pulled down, a real jump (well above the floor) is left alone.
-    if (B.feet) {
+    if (B.feet && B.riding) { if (B.baseY != null) B.obj.position.y = B.baseY; }
+    else if (B.feet) {
       if (B.baseY == null) B.baseY = B.obj.position.y;
       B.obj.position.y = B.baseY; B.obj.updateMatrixWorld(true);
       const par = B.obj.parent; const v = new THREE.Vector3();
@@ -713,7 +755,18 @@ export class SceneEngine {
   }
   _poseActors(g, u, D, withClips = true) {
     const travelling = (x) => TRAVEL_MOTIONS.includes(x.motionActor.motion?.type);
+    for (const eq of g.equip || []) eq.pose(u, D);
+    if (g.equip?.length) g.group.updateMatrixWorld(true);
     g.actors.forEach((a, i) => {
+      const ride = this._rideAt(g, a, u);
+      if (ride) { // on a seat: the seat decides where the rider is and which way they face
+        a.holder.position.copy(ride.pos); a.holder.rotation.set(ride.rot[0], ride.rot[1], ride.rot[2]); const sc = Number(a.actor.scale ?? 1); a.holder.scale.set(sc, sc, sc);
+        if (a.body) a.body.riding = !ride.stand;
+        if (a.blob) { const gy = g.surface(ride.pos.x, ride.pos.z); a.blob.position.set(ride.pos.x, gy + 0.03, ride.pos.z); const bs = Math.max(0.4, a.w0 * sc * 0.9); a.blob.scale.set(bs, bs * 0.8, 1); a.blob.material.opacity = 0.35; }
+        if (a.body && withClips) { this._poseBody(a, u); if (!ride.stand) this._seatHips(g, a, ride); }
+        return;
+      }
+      if (a.body) a.body.riding = false;
       const m = motionAt(a.motionActor, u, D);
       if (!a.mixer) life(a, m, u, D, i); // static models: procedural walk / idle so they don't look like sliding statues
       else faceTravel(a, m, u, D);
@@ -876,7 +929,11 @@ export class SceneEngine {
     const still = ['wide', 'group', 'closeup', 'follow'].includes(preset);
     if (still) { V *= 1 - 0.06 * k; lookX += Math.sin(u * 0.35) * V * 0.012; } // a slow "breathing" push-in so no shot is frozen
     if (preset === 'pan') lookX += lerp(-1, 1, lin) * Number(c.amount ?? 1.5) * (V / 9);
-    if (preset === 'orbit') yaw = lerp(-0.42, 0.42, lin);
+    if (preset === 'orbit') { const a = Number(c.amount ?? 0.42); yaw = lerp(-a, a, k * 0.5 + lin * 0.5); } // amount: radians each side
+    if (preset === 'crane') { // starts high and wide, sweeps down to the subject's level (an establishing move)
+      const from = frameFor('extreme-wide'); V = lerp(from.V * 1.1, V, k); lookY = lerp(from.look, lookY, k); elev = lerp(0.62, elev, k);
+    }
+    yaw += Number(c.yaw || 0); // a side angle (radians, + = from the right), for any move
     if (preset === 'tilt-up') { lookY += V * 0.3 * k; elev -= 0.08 * k; } // looks up a little; the subject stays in the picture
     yaw += adj.yaw || 0;
     let d = V / 2 / vT;

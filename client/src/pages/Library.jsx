@@ -10,16 +10,16 @@ const ACCEPT = { model3d: '.glb', voice: 'audio/*', animation: 'video/*,.fbx,.gl
 
 export default function Library({ kind }) {
   const { toast, health } = useStudio();
-  const kinds = kind === 'character' ? 'character' : 'location,prop';
+  const kinds = kind === 'character' ? 'character' : kind === 'landscape' ? 'landscape' : 'location,prop,landscape';
   const [items, setItems] = useState([]);
-  const [filter, setFilter] = useState('all');
+  const [filter, setFilter] = useState(kind === 'landscape' ? 'landscape' : 'all');
   const [selId, setSelId] = useState(null);
   const [item, setItem] = useState(null);
   const [verId, setVerId] = useState(null);
   const [compare, setCompare] = useState(null); // [idA, idB]
   const [newName, setNewName] = useState('');
   const [act, busy] = useAction();
-  const cats = CATS[kind];
+  const cats = CATS[kind] || CATS.location;
   const imageActive = health?.providers?.find((p) => p.id === 'gptImage')?.state === 'active';
 
   const loadList = useCallback(() => api.get(`/api/items?kind=${kinds}`).then((l) => { setItems(l); return l; }), [kinds]);
@@ -48,10 +48,11 @@ export default function Library({ kind }) {
       <div className="list-pane">
         {kind !== 'character' && (
           <div className="tabs small">
-            {['all', 'location', 'prop'].map((f) => <button key={f} className={filter === f ? 'on' : ''} onClick={() => setFilter(f)}>{f === 'all' ? 'All' : f === 'location' ? 'Locations' : 'Props'}</button>)}
+            {['all', 'location', 'prop', 'landscape'].map((f) => <button key={f} className={filter === f ? 'on' : ''} onClick={() => setFilter(f)}>{f === 'all' ? 'All' : f === 'location' ? 'Locations' : f === 'prop' ? 'Props' : 'Landscapes'}</button>)}
           </div>
         )}
-        <div className="row">
+        {filter === 'landscape' && <p className="small muted">Landscapes are saved from Stage 2 → Landscape (“Download landscape & save to My World” on each place).</p>}
+        <div className="row" style={filter === 'landscape' ? { display: 'none' } : undefined}>
           <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder={kind === 'character' ? 'New character name' : `New ${filter === 'prop' ? 'prop' : 'location'} name`} onKeyDown={(e) => e.key === 'Enter' && newName.trim() && create()} />
           <button className="btn primary" disabled={!newName.trim() || busy} onClick={create}>+</button>
         </div>
@@ -81,6 +82,10 @@ export default function Library({ kind }) {
                 <b>Used in:</b> {item.usage.length ? item.usage.map((u) => <span key={u.episode_id} className="tag">#{u.number} {u.title} → {u.version_label}</span>) : <span className="muted">no projects yet</span>}
               </div>
               <ReviseBox item={item} />
+              {item.kind === 'landscape' && item.versions.at(-1)?.spec?.landscape && (
+                <div className="small"><b>Landscape settings</b> <span className="muted">· {item.versions.at(-1).spec.time_of_day} · from “{item.versions.at(-1).spec.source_project}”, around “{item.versions.at(-1).spec.scenery}”</span>
+                  <div className="muted">{Object.entries(item.versions.at(-1).spec.landscape).map(([k, v]) => `${k}: ${v}`).join(' · ')}</div></div>
+              )}
               {item.versions.at(-1)?.spec?.recipe && <p className="small muted">Editable recipe stored: {item.versions.at(-1).spec.recipe.template} template{item.versions.at(-1).spec.revisions?.length ? ` · ${item.versions.at(-1).spec.revisions.length} revision(s) in its history` : ''}.</p>}
             </div>
 

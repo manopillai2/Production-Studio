@@ -130,6 +130,10 @@ CREATE TABLE IF NOT EXISTS jobs (
 
 // ---- v0.2: staged projects, assistants, character development ----
 const addCol = (table, col, def) => { try { db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`); } catch { /* already exists */ } };
+// The landscape around a scenery, saved to My World as its own item (kind 'landscape'): which item, when, and what was saved.
+addCol('asset_cards', 'landscape_item_id', 'INTEGER');
+addCol('asset_cards', 'landscape_saved_at', 'TEXT');
+addCol('asset_cards', 'landscape_saved_hash', `TEXT DEFAULT ''`);
 addCol('item_versions', 'spec', `TEXT DEFAULT '{}'`);   // design spec developed with the assistant
 addCol('episodes', 'music_brief', `TEXT DEFAULT '{}'`); // {options:[...], chosen: n, source}
 db.exec(`

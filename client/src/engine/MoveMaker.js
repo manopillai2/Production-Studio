@@ -22,6 +22,7 @@ const ALIASES = {
   lFLwr: ['frontlwrl', 'frontlowerl', 'frontlegl02', 'leftfrontlowerleg'], rFLwr: ['frontlwrr', 'frontlowerr', 'frontlegr02', 'rightfrontlowerleg'],
   lRLeg: ['rearuprl', 'rearupperl', 'backlegl01', 'leftrearleg', 'lrearleg'], rRLeg: ['rearuprr', 'rearupperr', 'backlegr01', 'rightrearleg', 'rrearleg'],
   lRLwr: ['rearlwrl', 'rearlowerl', 'backlegl02'], rRLwr: ['rearlwrr', 'rearlowerr', 'backlegr02'],
+  lRHock: ['rearhorselinkl', 'rearhockl'], rRHock: ['rearhorselinkr', 'rearhockr'],
   lEar: ['earl', 'leftear', 'lear', 'earleft'], rEar: ['earr', 'rightear', 'rear', 'earright'],
   lEar2: ['earl01', 'leftear01', 'lear01'], rEar2: ['earr01', 'rightear01', 'rear01'],
 };
@@ -109,6 +110,15 @@ function sampleKeys(keys, u, rig) {
   for (const name of names) rot[name] = [0, 1, 2].map((j) => val((p) => p?.rot[name]?.[j] || 0));
   return { rot, up: val((p) => p?.up || 0), fwd: val((p) => p?.fwd || 0), side: val((p) => p?.side || 0) };
 }
+
+/** Sitting on a seat: thighs forward, knees bent, hips lowered, hands forward on a handle. */
+const SIT = () => ({ legs: [-82, 86], up: -0.2, spine: [6], armUp: -52, arms: [-48, -12], fores: [-38] });
+/** Astride a seesaw plank: a leg each side of the plank (thighs spread), knees bent, hands on the handle in front. */
+const STRADDLE = (k = 1) => ({ legs: [-58 * k, 72 * k], lThigh: [0, 0, 36], rThigh: [0, 0, -36], up: -0.2, spine: [8], armUp: -48, arms: [-50, -10], fores: [-42] });
+/** At the edge of a merry-go-round, facing out: legs dangle over the rim, hands hold the edge beside the hips. */
+const EDGE = () => ({ legs: [-78, 78], up: -0.2, spine: [4], armUp: -80, arms: [12, 0], fores: [-16] });
+/** On a slide: legs straight out along the chute, leaning back a little, hands on the sides. */
+const SLIDE = () => ({ legs: [-84, 6], up: -0.2, spine: [-8], armUp: -62, arms: [-18, -20], fores: [-14] });
 
 /** Wide, low martial-arts stance with fists up (k scales how deep). */
 const ninjaStance = (k = 1) => ({ up: -0.06 * k, lThigh: [-18 * k, 0, 14], rThigh: [-18 * k, 0, -14], lShin: [34 * k], rShin: [34 * k], spine: [8 * k], head: [-6],
@@ -462,6 +472,134 @@ export const MOVES = {
       const down = (b) => ({ chest: [6], neck: [16 + b], head: [10 + b * 0.6], lEar: [-12], rEar: [-12], tail0: [14, 6], tail1: [4, 4] });
       return { seconds, keys: [{ t: 0, pose: {} }, { t: 0.25, pose: down(0) }, { t: 0.35, pose: down(5) }, { t: 0.45, pose: down(-2) }, { t: 0.55, pose: down(5) }, { t: 0.65, pose: down(-2) }, { t: 0.78, pose: down(0) }, { t: 1, pose: {} }] };
     },
+  },
+  // ---------------- riding playground equipment (held for the whole ride; the engine puts the hips on the seat) ----------------
+  sit: {
+    label: 'Sit', icon: '🪑', group: 'Playground', words: ['sit', 'seat'], biped: true,
+    params: { seconds: { label: 'Length (s)', min: 1, max: 30, step: 0.5, value: 6 }, repeats: { label: 'Repeat', min: 1, max: 1, step: 1, value: 1 } },
+    make: ({ seconds }) => { const p = SIT(); return { seconds, keys: [{ t: 0, pose: p }, { t: 1, pose: p }] }; },
+  },
+  seesawRide: {
+    label: 'Ride the seesaw', icon: '⚖️', group: 'Playground', words: ['seesaw', 'teeter'], biped: true,
+    params: { seconds: { label: 'Bounce (s)', min: 1.2, max: 5, step: 0.1, value: 2.4 }, low: { label: 'Low first', options: ['yes', 'no'], value: 'yes' }, repeats: { label: 'Bounces', min: 1, max: 20, step: 1, value: 4 } },
+    make: ({ seconds, low }) => {
+      // Down: knees bend to push off the ground. Up: legs stretch, arms lift a little, head up: "wheee!"
+      const down = { ...STRADDLE(1.15), spine: [14], head: [6] }; // knees bend to push off
+      const up = { ...STRADDLE(0.75), armUp: -26, arms: [-62, -8], fores: [-18], spine: [-10], head: [-14] }; // legs stretch, arms lift: wheee
+      const [a, b] = low === 'no' ? [up, down] : [down, up]; const mid = STRADDLE();
+      return { seconds, keys: [{ t: 0, pose: mid }, { t: 0.25, pose: a }, { t: 0.5, pose: mid }, { t: 0.75, pose: b }, { t: 1, pose: mid }] };
+    },
+  },
+  swingRide: {
+    label: 'Swing', icon: '🛝', group: 'Playground', words: ['swing'], biped: true,
+    params: { seconds: { label: 'Swing (s)', min: 1.5, max: 4, step: 0.1, value: 2.6 }, repeats: { label: 'Swings', min: 1, max: 20, step: 1, value: 4 } },
+    make: ({ seconds }) => {
+      // Hands up on the chains. Going back: legs tuck, lean forward. Going forward: legs stretch out, lean back.
+      const hold = { armUp: 62, arms: [-22, 0], fores: [-62] }; // hands up on the chains, at the sides
+      const back = { ...SIT(), ...hold, legs: [-70, 118], spine: [12], head: [4] };
+      const front = { ...SIT(), ...hold, legs: [-95, 15], spine: [-14], head: [-12] };
+      const mid = { ...SIT(), ...hold };
+      return { seconds, keys: [{ t: 0, pose: mid }, { t: 0.25, pose: back }, { t: 0.5, pose: mid }, { t: 0.75, pose: front }, { t: 1, pose: mid }] };
+    },
+  },
+  merryRide: {
+    label: 'Ride the merry-go-round', icon: '🎠', group: 'Playground', words: ['merry', 'round', 'carousel'], biped: true,
+    params: { seconds: { label: 'Cycle (s)', min: 2, max: 8, step: 0.1, value: 4 }, repeats: { label: 'Cycles', min: 1, max: 10, step: 1, value: 2 } },
+    make: ({ seconds }) => {
+      const hold = { ...EDGE(), legs: [-74, 70] }; const kick = { ...EDGE(), legs: [-88, 30] }; // legs swing over the rim
+      const wave = (k) => ({ ...EDGE(), rArmUp: 140, rArm: [-10], rFore: [0, 0, k * 25], rHand: [0, 0, k * 12], head: [-8, -12] });
+      return { seconds, keys: [{ t: 0, pose: hold }, { t: 0.15, pose: kick }, { t: 0.3, pose: hold }, { t: 0.45, pose: kick }, { t: 0.55, pose: wave(1) }, { t: 0.65, pose: wave(-1) }, { t: 0.75, pose: wave(1) }, { t: 0.85, pose: wave(-1) }, { t: 1, pose: hold }] };
+    },
+  },
+  slideRide: {
+    label: 'Slide down', icon: '🛝', group: 'Playground', words: ['slide'], biped: true,
+    params: { seconds: { label: 'Length (s)', min: 1, max: 20, step: 0.5, value: 4 }, repeats: { label: 'Repeat', min: 1, max: 1, step: 1, value: 1 } },
+    make: ({ seconds }) => {
+      const top = SLIDE(); const whee = { ...SLIDE(), armUp: 150, arms: [-10, 0], fores: [0, 0, 10], spine: [-18], head: [-14] };
+      return { seconds, keys: [{ t: 0, pose: top }, { t: 0.25, pose: top }, { t: 0.4, pose: whee }, { t: 0.85, pose: whee }, { t: 1, pose: top }] };
+    },
+  },
+  dogSit: {
+    label: 'Sit (four legs)', icon: '🐕', group: 'Four-legged', words: ['dog sit', 'sit dog'], quad: true,
+    params: { seconds: { label: 'Length (s)', min: 1, max: 30, step: 0.5, value: 6 }, wag: { label: 'Tail wags', min: 0, max: 20, step: 1, value: 8 }, repeats: { label: 'Repeat', min: 1, max: 1, step: 1, value: 1 } },
+    make: ({ seconds, wag }) => {
+      // Rear legs folded under, front legs straight, chest up, tail wagging, head looking around.
+      const n = 40; const keys = [];
+      for (let f = 0; f <= n; f++) {
+        const t = f / n; const T = 2 * Math.PI;
+        const pose = { Hips: [-28], up: -0.16, lRLeg: [-62], rRLeg: [-62], lRLwr: [-55], rRLwr: [-55], lRHock: [100], rRHock: [100], lFLeg: [26], rFLeg: [26], chest: [-6], head: [8 + 4 * Math.sin(T * 2 * t), 18 * Math.sin(T * t)], neck: [6] };
+        for (let i = 0; i < 6; i++) pose[`tail${i}`] = [10, 22 * (0.6 + 0.12 * i) * Math.sin(T * wag * t - i * 0.5), 0];
+        keys.push({ t, pose });
+      }
+      return { seconds, keys };
+    },
+  },
+
+  skip: {
+    label: 'Skip along', icon: '🎵', group: 'Travel', words: ['skip', 'skipping'], biped: true,
+    params: { seconds: { label: 'Skip (s)', min: 0.4, max: 1.2, step: 0.05, value: 0.62 }, height: { label: 'Bounce', min: 0, max: 0.15, step: 0.01, value: 0.06 }, repeats: { label: 'Skips', min: 1, max: 20, step: 1, value: 6 } },
+    make: ({ seconds, height }) => {
+      // step-hop on one foot, then the other; arms swing opposite to the legs
+      const hop = (s, k) => ({ up: k * height, [`${s}Thigh`]: [-55], [`${s}Shin`]: [70], [`${s === 'l' ? 'r' : 'l'}Thigh`]: [12], [`${s === 'l' ? 'r' : 'l'}Shin`]: [10], armUp: -60, [`${s === 'l' ? 'r' : 'l'}Arm`]: [s === 'l' ? 40 : -40], [`${s}Arm`]: [s === 'l' ? -35 : 35], fores: [-30], spine: [4], head: [-4] });
+      return { seconds, keys: [{ t: 0, pose: hop('l', 0) }, { t: 0.25, pose: hop('l', 1) }, { t: 0.5, pose: hop('r', 0) }, { t: 0.75, pose: hop('r', 1) }, { t: 1, pose: hop('l', 0) }] };
+    },
+  },
+  climb: {
+    label: 'Climb a ladder', icon: '🪜', group: 'Playground', words: ['climb', 'ladder'], biped: true,
+    params: { seconds: { label: 'Step (s)', min: 0.4, max: 1.5, step: 0.05, value: 0.7 }, repeats: { label: 'Steps', min: 1, max: 12, step: 1, value: 4 } },
+    make: ({ seconds }) => {
+      // one hand and the opposite foot go up together, then the other side
+      const reach = (s) => { const o = s === 'l' ? 'r' : 'l'; return { [`${s}ArmUp`]: 150, [`${o}ArmUp`]: 105, fores: [-25], [`${o}Thigh`]: [-62], [`${o}Shin`]: [85], [`${s}Thigh`]: [-12], [`${s}Shin`]: [25], spine: [12], head: [-14] }; };
+      return { seconds, keys: [{ t: 0, pose: reach('l') }, { t: 0.5, pose: reach('r') }, { t: 1, pose: reach('l') }] };
+    },
+  },
+  kickBall: {
+    label: 'Kick a ball', icon: '⚽', group: 'Play', words: ['kick ball', 'kick the ball'], biped: true,
+    params: { leg: { label: 'Leg', options: ['right', 'left'], value: 'right' }, seconds: { label: 'Length (s)', min: 0.8, max: 2.5, step: 0.1, value: 1.2 }, repeats: { label: 'Repeat', min: 1, max: 4, step: 1, value: 1 } },
+    make: ({ leg, seconds }) => {
+      const s = leg === 'left' ? 'l' : 'r', o = s === 'l' ? 'r' : 'l';
+      const back = { [`${s}Thigh`]: [22], [`${s}Shin`]: [70], [`${o}Thigh`]: [-10], [`${o}Shin`]: [18], up: -0.03, armUp: -40, [`${o}Arm`]: [-35], [`${s}Arm`]: [30], spine: [8] };
+      const kick = { [`${s}Thigh`]: [-58], [`${s}Shin`]: [8], [`${s}Foot`]: [-15], [`${o}Thigh`]: [-8], [`${o}Shin`]: [14], armUp: -20, [`${o}Arm`]: [35], [`${s}Arm`]: [-30], spine: [-8], head: [4] };
+      return { seconds, keys: [{ t: 0, pose: {} }, { t: 0.35, pose: back }, { t: 0.52, pose: kick }, { t: 0.7, pose: kick }, { t: 1, pose: {} }] };
+    },
+  },
+  twirl: {
+    label: 'Twirl (arms out)', icon: '💫', group: 'Play', words: ['twirl', 'pirouette'], biped: true,
+    params: { turns: { label: 'Turns', min: 1, max: 3, step: 1, value: 2 }, seconds: { label: 'Length (s)', min: 1, max: 4, step: 0.1, value: 2 }, repeats: { label: 'Repeat', min: 1, max: 3, step: 1, value: 1 } },
+    make: ({ turns, seconds }) => ({ seconds, keys: [
+      { t: 0, pose: {} },
+      { t: 0.15, pose: { armUp: 20, fores: [0, 0, 10], up: 0.02, head: [-8] } },
+      { t: 0.5, pose: { Hips: [0, 180 * turns], armUp: 35, fores: [0, 0, 15], up: 0.04, head: [-12], spine: [-6] } },
+      { t: 0.85, pose: { Hips: [0, 360 * turns], armUp: 20, up: 0.02 } },
+      { t: 1, pose: { Hips: [0, 360 * turns] } },
+    ] }),
+  },
+  rollOver: {
+    label: 'Roll over', icon: '🐶', group: 'Four-legged', words: ['roll', 'roll over'], quad: true,
+    params: { seconds: { label: 'Length (s)', min: 1, max: 3, step: 0.1, value: 1.6 }, repeats: { label: 'Repeat', min: 1, max: 3, step: 1, value: 1 } },
+    make: ({ seconds }) => {
+      // lie down, roll onto the back with the paws up, and over onto the feet again
+      const tuck = { lFLeg: [-40], rFLeg: [-40], lFLwr: [70], rFLwr: [70], lRLwr: [-45], rRLwr: [-45], lRHock: [80], rRHock: [80] };
+      return { seconds, keys: [
+        { t: 0, pose: {} },
+        { t: 0.2, pose: { ...tuck, up: -0.14 } },
+        { t: 0.45, pose: { ...tuck, Hips: [0, 0, 120], up: -0.04, head: [-10] } },
+        { t: 0.62, pose: { ...tuck, Hips: [0, 0, 220], up: 0.0, head: [-15] } },
+        { t: 0.82, pose: { ...tuck, Hips: [0, 0, 330], up: -0.1 } },
+        { t: 1, pose: { Hips: [0, 0, 360] } },
+      ] };
+    },
+  },
+  jumpCatch: {
+    label: 'Jump to catch', icon: '🥏', group: 'Four-legged', words: ['catch', 'leap'], quad: true,
+    params: { height: { label: 'Height', min: 0.05, max: 0.6, step: 0.01, value: 0.32 }, seconds: { label: 'Length (s)', min: 0.6, max: 2, step: 0.05, value: 1.0 }, repeats: { label: 'Repeat', min: 1, max: 4, step: 1, value: 1 } },
+    make: ({ height, seconds }) => ({ seconds, keys: [
+      { t: 0, pose: {} },
+      { t: 0.25, pose: { up: -0.06, Hips: [10], lFLeg: [-10], rFLeg: [-10], lRLwr: [-20], rRLwr: [-20], lRHock: [40], rRHock: [40], head: [10] } },
+      { t: 0.5, pose: { up: height, Hips: [-28], lFLeg: [-55], rFLeg: [-55], lFLwr: [60], rFLwr: [60], lRLwr: [20], rRLwr: [20], head: [-30], neck: [-10], tail0: [30, 0] } },
+      { t: 0.75, pose: { up: 0.02, Hips: [-6], lFLeg: [-20], rFLeg: [-20], head: [-10] } },
+      { t: 1, pose: {} },
+    ] }),
   },
   dogIdle: {
     label: 'Four-legged idle', icon: '🫁', group: 'Four-legged', words: ['dog idle', 'stand dog'], quad: true,

@@ -262,6 +262,42 @@ Implementation lessons:
 - **Profile before optimising.** Timing each step showed drawing took 2.4 ms and uploading took 87 ms.
 - **Memory on an 8 GB laptop.** Background apps (Edge startup boost, WhatsApp, Copilot) and Claude Code's low-memory reaper can stop long exports. Close them before exporting. An export stopped half-way leaves its job "running", which blocks the next export.
 
+### Project 06 lessons (playground, rich landscapes, cinematic direction)
+
+- **Moving equipment must be built in the engine.** Meshy makes one solid piece, so a Meshy seesaw would tip over base and all. Build seesaws, swings, slides and merry-go-rounds procedurally, with named seat points. Riders are placed on the seat every frame, and their hips are then moved exactly onto it (`_rideAt`, `_seatHips`). Turn ground contact off while riding.
+- **Riding poses must match the equipment's rhythm.** The seesaw push happens at the bottom and the swing tuck going back. Use the equipment's period as the move's `seconds`. A ride covering the whole shot must start already seated (`hold` + `at: 0` means no fade-in), or a stand-to-sit blend shows at the cut.
+- **Check each rig's bone chain.** Mango's rear leg is lower leg → hock → foot, with no upper leg, so add the hock to the bone map before posing him.
+- **"Colourful and detailed" means arranged, not scattered.** Use flower beds in colour bands, bunting along poles, blossom trees in candy colours, patchwork hills, a rainbow, balloons and butterflies. They fill the frame with order and colour.
+- **What the lyric names must be in the picture** (round 3 lesson), even when the props change. The lyric still sings of a red kite and pink balloons, so build them for this project (engine kite with a fluttering tail, pink balloon bunch) and time them to the line.
+- **A cinematic grammar for rhymes:**
+  - an establishing crane per place;
+  - low hero angles on rides;
+  - side angles for swings and slides (the motion is along the camera's view otherwise);
+  - close-ups while singing;
+  - orbits on the merry-go-round;
+  - push-ins on long shots;
+  - a sunset palette for the ending;
+  - a subtle vignette.
+- **Camera blockers.** Big set pieces (giant mushrooms, lollipop trees, equipment) can sit between the camera and the actors. Check every shot on a contact sheet, then fix it by moving equipment (keeping the same layout across a place's shots), scaling the setting up, or choosing another side angle.
+- **Reverse angles need the actors turned too** (`rot`), or Shot Doctor reports backs to the camera.
+- **Preview-image backgrounds become geometry.** The cart preview's cloud and leaves came out as flat pieces. `tools/remove-islands.mjs` with `BOXES=1` shows each piece's box: flat (thin z) pieces beside the object are background bits.
+- **Scripted exports: watch the right job.** The browser export creates a job of type `render`, not `export`. Wait on that job id reaching `done`; never wait on button text (a stuck job disables the button, which looked like "finished").
+- **Duplicating a project** (no app feature yet): copy the episode, the approved lyrics, the song file, the timing (remap `lyrics_id`/`audio_id`) and the character cards (their My World versions carry the rigs and clips). See `docs/project-06/duplicate.mjs`.
+
+### Project 06 round 2 lessons (riding poses, more movement)
+
+- **One sitting pose doesn't fit every ride.** Check where the legs go for each piece of equipment:
+  - seesaw: astride (a leg each side of the plank);
+  - merry-go-round: at the rim facing out, legs over the edge;
+  - slide: legs straight along the chute;
+  - swing: legs free.
+
+  Verify with a camera placed right next to the rider's hips (a custom close-up in the running app), not just the shot camera.
+- **Show how a child gets onto equipment:** a ladder climb before the slide (`ride.climb`). Make the shot long enough for climb + sit + slide, about 3.5 s.
+- **"Only walking" means locomotion variety is missing.** Use run chases, skipping, climbing, kicking a ball, twirls, and for animals roll-overs, leaps and zoomies. A move played while the actor travels a path replaces the walk clip, so `skip` + `path` gives a skipping journey.
+- **Circle runs:** pick the start angle so the run ends towards the camera. Keep the speed believable for the running animation: 0.5 lap in 2.5 s, not 0.85.
+- **Camera inside the place, not outside its ring.** A wide camera standing outside a diorama's rim gets the edge pieces (lollipops, rocks) in the foreground. Use `size: full` with `distance` instead.
+
 ## 14. Known limitations and ideas for later
 
 - Faces: no expressions on cue (blinks and singing mouths only). Lip-sync is spelling-based (no phoneme dictionary). Faint traces of the carved smile can show at the mouth corners. Four-legged characters (Mango) keep their painted mouth (his rig has a jaw bone that could be used).
@@ -271,5 +307,6 @@ Implementation lessons:
 - Repeated chorus close-ups are still framed similarly. Shot Doctor could flag "same shot as the last chorus".
 - Shot Doctor idea: "action too small to see" when a gesture plays while the character covers less than 25% of the frame height.
 - No depth of field, water reflections or particles (leaves, sparkles).
+- No "duplicate project" button yet (Project 06 used a script).
 - 4K export is missing from the UI.
 - Claude token usage isn't tracked.

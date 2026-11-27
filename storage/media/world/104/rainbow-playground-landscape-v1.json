@@ -1,0 +1,42 @@
+{
+  "type": "rhymes-studio-landscape",
+  "name": "Rainbow Playground · landscape",
+  "landscape": {
+    "sky": "storybook",
+    "clouds": "some",
+    "trees": "many",
+    "dressing": "lush",
+    "houses": "some",
+    "wind": "breezy",
+    "birds": "few",
+    "detail": "rich",
+    "river": "none"
+  },
+  "time_of_day": "day",
+  "why": "A busy, colourful playground: candy-coloured blossom trees, rainbow flower beds, bunting, cottages and a rainbow all round.",
+  "colour_roles": {
+    "fur": "#F7EEDC",
+    "fur_support": "#F7EEDC",
+    "inner_ear": "#F5C6A5",
+    "iris": "#3B4A48",
+    "nose": "#EE8A78",
+    "cheeks": "#F5C6A5",
+    "accent": "#F2B705",
+    "foliage": "#8BB174",
+    "foliage_far": "#6E9E9B",
+    "flowers": [
+      "#F5C6A5",
+      "#4FB9F7"
+    ],
+    "stone": "#B4AEC4",
+    "soil": "#C99A72",
+    "water": "#6E9E9B",
+    "sun": "#F2B705",
+    "moon": "#F5EEDB",
+    "sky_day": "#4FB9F7"
+  },
+  "scenery": "Rainbow Playground",
+  "scenery_item_id": 85,
+  "source_project": "Mira and Mango: Playground Party!",
+  "saved_at": "2026-11-27T17:12:57.322Z"
+}

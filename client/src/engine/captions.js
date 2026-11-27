@@ -153,6 +153,10 @@ function mixHex(a, b, k) {
  */
 export function drawOverlay(ctx, w, h, t, { lines = [], look = {}, title = '', channel = {}, duration = 0 } = {}) {
   const colors = channel.colors || {};
+  if (look.vignette !== false) { // a soft darkening at the edges draws the eye to the middle, like a film
+    const g = ctx.createRadialGradient(w / 2, h * 0.52, Math.min(w, h) * 0.42, w / 2, h * 0.52, Math.hypot(w, h) * 0.6);
+    g.addColorStop(0, 'rgba(30,15,40,0)'); g.addColorStop(1, 'rgba(30,15,40,0.32)'); ctx.save(); ctx.fillStyle = g; ctx.fillRect(0, 0, w, h); ctx.restore();
+  }
   const timed = lines.filter((l) => l.start != null && l.end != null);
   const first = timed[0]?.start ?? 0; const last = timed.at(-1)?.end ?? duration;
   // Title card over the instrumental intro (or a short banner if the singing starts right away).

@@ -16,3 +16,5 @@ docs/project-*/music/tts/*.f32
 
 # Over GitHub's 100 MB per-file limit (outdated round-3 preview)
 storage/media/exports/episode-16/2026-11-27T14-49-38-1080p/*.mp4
+storage/media/exports/episode-16/2026-11-27T16-18-00-1080p/*.mp4
+storage/media/exports/episode-17/*/*.mp4

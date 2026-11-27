@@ -1,5 +1,6 @@
 // Routes for the five-stage workflow (Stages 2–5). Registered from index.js.
 import fs from 'node:fs';
+import crypto from 'node:crypto';
 import path from 'node:path';
 import { one, all, run, tx, getSetting } from './db.js';
 import { MEDIA_DIR, TMP_DIR } from './paths.js';
@@ -431,8 +432,55 @@ export function registerStudio(app, ctx) {
     const ep = one('SELECT * FROM episodes WHERE id=?', epId);
     let plan = null; try { plan = ep.landscape_plan ? JSON.parse(ep.landscape_plan) : null; } catch { /* none */ }
     return { plan, look: { ...getSetting('world_look', {}), ...lookOf(ep) }, project_look: lookOf(ep), world_look: getSetting('world_look', {}),
-      roles: currentProfile().roles, sceneries: cardsFor(epId).filter((c) => c.kind === 'location').map((c) => ({ card_id: c.id, name: c.name, model_url: c.model_url, status: c.status, usages: c.usages, landscape: landscapeOf(c) })) };
+      roles: currentProfile().roles, sceneries: cardsFor(epId).filter((c) => c.kind === 'location').map((c) => ({ card_id: c.id, name: c.name, model_url: c.model_url, status: c.status, usages: c.usages, landscape: landscapeOf(c), saved: landscapeSaved(c) })) };
   };
+  // ---- Landscapes in My World (a copy of everything around a scenery: World Style → project → place) ----
+  const fullLandscape = (c) => { const ep = one('SELECT * FROM episodes WHERE id=?', c.episode_id); const own = landscapeOf(c);
+    const look = { ...getSetting('world_look', {}), ...lookOf(ep), ...Object.fromEntries(Object.entries(own).filter(([k]) => !['time_of_day', 'why'].includes(k))) };
+    for (const k of ['title_card', 'end_card', 'end_text', 'karaoke', 'transition', 'fade_in_out', 'title_text']) delete look[k]; // video settings, not landscape
+    return { look, time_of_day: own.time_of_day || 'day', why: own.why || '', roles: currentProfile().roles }; };
+  const landscapeHash = (c) => crypto.createHash('sha1').update(JSON.stringify(fullLandscape(c))).digest('hex').slice(0, 16);
+  const landscapeSaved = (c) => {
+    if (!c.landscape_item_id || !c.landscape_saved_at) return null;
+    const it = one('SELECT id, name FROM items WHERE id=?', c.landscape_item_id); if (!it) return null;
+    const v = one('SELECT label FROM item_versions WHERE item_id=? ORDER BY id DESC LIMIT 1', it.id);
+    return { item_id: it.id, name: it.name, version: v?.label || '', at: c.landscape_saved_at, changed: c.landscape_saved_hash !== landscapeHash(c) };
+  };
+  /** Save the landscape around a scenery to My World (a new version each time it changed) + a picture of it. */
+  app.post('/api/cards/:id/landscape/save', h((req) => {
+    const c = getCard(req.params.id);
+    if (c.kind !== 'location') throw new HttpError(400, 'Only scenery has a landscape.');
+    const hash = landscapeHash(c);
+    if (c.landscape_item_id && c.landscape_saved_hash === hash && one('SELECT id FROM items WHERE id=?', c.landscape_item_id)) return { ...landscapeState(c.episode_id), download_url: `/api/cards/${c.id}/landscape/download` };
+    const ep = one('SELECT title FROM episodes WHERE id=?', c.episode_id); const L = fullLandscape(c);
+    tx(() => {
+      let itemId = c.landscape_item_id && one('SELECT id FROM items WHERE id=?', c.landscape_item_id) ? c.landscape_item_id : null;
+      if (!itemId) {
+        const base = `${c.name} · landscape`; let name = base; let k = 2;
+        while (one('SELECT id FROM items WHERE lower(name)=lower(?)', name)) name = `${base} ${k++}`;
+        itemId = Number(run('INSERT INTO items(kind,name,description,notes) VALUES(?,?,?,?)', 'landscape', name, L.why || `The landscape around ${c.name}`, `Around the scenery “${c.name}” in “${ep?.title}”. ${L.time_of_day}.`).lastInsertRowid);
+      }
+      const n = one('SELECT COUNT(*) n FROM item_versions WHERE item_id=?', itemId).n + 1;
+      const spec = { landscape: L.look, time_of_day: L.time_of_day, why: L.why, colour_roles: L.roles, scenery: c.name, scenery_item_id: c.item_id || null, source_project: ep?.title };
+      const vid = Number(run(`INSERT INTO item_versions(item_id,label,status,approved_at,spec,notes) VALUES(?,?, 'approved', datetime('now'), ?, ?)`, itemId, `v${n}`, JSON.stringify(spec), `Saved from “${ep?.title}”`).lastInsertRowid);
+      fs.mkdirSync(path.join(MEDIA_DIR, `world/${itemId}`), { recursive: true });
+      const jr = `world/${itemId}/${slug(c.name)}-landscape-v${n}.json`;
+      fs.writeFileSync(path.join(MEDIA_DIR, jr), JSON.stringify({ type: 'rhymes-studio-landscape', name: `${c.name} · landscape`, ...spec, saved_at: new Date().toISOString() }, null, 2));
+      run(`INSERT INTO assets(owner_type,owner_id,category,label,file_path,mime,source,status) VALUES('version',?, 'landscape', ?, ?, 'application/json', 'studio', 'approved')`, vid, `Landscape settings (v${n})`, jr);
+      const m = /^data:image\/(png|jpeg);base64,(.+)$/.exec(String(req.body?.image || ''));
+      if (m) { const pr = `world/${itemId}/${slug(c.name)}-landscape-v${n}.${m[1] === 'png' ? 'png' : 'jpg'}`; fs.writeFileSync(path.join(MEDIA_DIR, pr), Buffer.from(m[2], 'base64'));
+        run(`INSERT INTO assets(owner_type,owner_id,category,label,file_path,mime,source,status) VALUES('version',?, 'render', 'Preview', ?, ?, 'studio', 'approved')`, vid, pr, `image/${m[1]}`); }
+      run('UPDATE asset_cards SET landscape_item_id=?, landscape_saved_at=datetime(\'now\'), landscape_saved_hash=? WHERE id=?', itemId, hash, c.id);
+    });
+    return { ...landscapeState(c.episode_id), download_url: `/api/cards/${c.id}/landscape/download` };
+  }));
+  app.get('/api/cards/:id/landscape/download', (req, res) => {
+    const c = one('SELECT * FROM asset_cards WHERE id=?', +req.params.id);
+    const v = c?.landscape_item_id && one('SELECT id FROM item_versions WHERE item_id=? ORDER BY id DESC LIMIT 1', c.landscape_item_id);
+    const a = v && one(`SELECT file_path FROM assets WHERE owner_type='version' AND owner_id=? AND category='landscape'`, v.id);
+    if (!a || !fs.existsSync(path.join(MEDIA_DIR, a.file_path))) return res.status(404).json({ error: 'Save the landscape to My World first.' });
+    res.download(path.join(MEDIA_DIR, a.file_path), `${slug(c.name)}-landscape.json`);
+  });
   app.get('/api/episodes/:id/landscape', h((req) => { need(one('SELECT id FROM episodes WHERE id=?', +req.params.id), 'Project'); return landscapeState(+req.params.id); }));
   app.put('/api/cards/:id/landscape', h((req) => {
     const c = getCard(req.params.id);
@@ -804,7 +852,7 @@ export function registerStudio(app, ctx) {
       look: { ...getSetting('world_look', {}), ...lookOf(ep) }, project_look: lookOf(ep), world_look: getSetting('world_look', {}), roles: currentProfile().roles, sections: sectionsOf(epId), title: ep.title, channel: { name: channel().name, colors: channel().colors, caption_style: channel().caption_style } };
   }));
   // ---- The project's look (landscape around the scenery, title/end cards, karaoke captions, default transition) ----
-  const LOOK_KEYS = { sky: ['auto', 'clear', 'soft', 'storybook'], clouds: ['none', 'few', 'some', 'many'], hills: ['none', 'low', 'rolling', 'tall'], trees: ['none', 'few', 'some', 'many'], dressing: ['none', 'light', 'lush'], transition: ['auto', 'cut', 'dissolve', 'dip-white', 'iris', 'wipe'], river: ['none', 'behind', 'winding'], houses: ['none', 'few', 'some', 'many'], wind: ['calm', 'breezy', 'windy'], birds: ['none', 'few', 'some'] };
+  const LOOK_KEYS = { sky: ['auto', 'clear', 'soft', 'storybook'], clouds: ['none', 'few', 'some', 'many'], hills: ['none', 'low', 'rolling', 'tall'], trees: ['none', 'few', 'some', 'many'], dressing: ['none', 'light', 'lush'], transition: ['auto', 'cut', 'dissolve', 'dip-white', 'iris', 'wipe'], river: ['none', 'behind', 'winding'], houses: ['none', 'few', 'some', 'many'], wind: ['calm', 'breezy', 'windy'], birds: ['none', 'few', 'some'], detail: ['normal', 'rich'] };
   const lookOf = (ep) => { try { return JSON.parse(ep.look || '{}'); } catch { return {}; } };
   const cleanLook = (b, prev = {}) => {
     const o = { ...prev };
@@ -887,7 +935,7 @@ export function registerStudio(app, ctx) {
 
   /** Claude's plan, checked against the engine: known assets only, known motions/cameras/lighting, numbers clamped, lines covered in order. */
   const MOTION_TYPES = ['none', 'rise', 'float', 'drift', 'bounce', 'twinkle', 'spin', 'sway', 'path', 'circle'];
-  const CAMERA_TYPES = ['wide', 'tilt-up', 'pan', 'dolly-in', 'closeup', 'follow', 'orbit', 'group'];
+  const CAMERA_TYPES = ['wide', 'tilt-up', 'pan', 'dolly-in', 'closeup', 'follow', 'orbit', 'group', 'crane'];
   const SHOT_SIZES = ['auto', 'extreme-wide', 'wide', 'full', 'medium', 'closeup'];
   const TRANSITIONS = ['auto', 'cut', 'dissolve', 'dip-white', 'iris', 'wipe'];
   /** Timed body actions, limited to what this character's rig can do. Unusable ones are reported, not silently dropped. */

@@ -170,3 +170,10 @@ Looked at full 1080p frames instead of small crops. Causes and fixes:
 - Red "horns" stayed visible while singing. A green test patch showed that the painted smile is **carved into the model** (a groove) and reaches further out and higher than the cover. → Triangles of the groove walls are now repainted too (they face up/down, not forward); triangles seen edge-on get a flat colour instead of being skipped; the cover was enlarged (still below the nose); the singing mouth starts just below the groove.
 - Speed: painting took ~150 ms a frame. → The face triangles are grouped into 18 small patches, the unchanging skin cover is drawn once, and the patch canvases stay in CPU memory (`willReadFrequently`), so uploading is a straight copy. Singing frames: ~25–33 ms (quiet ~13 ms).
 - To free memory for rendering, background apps were closed at the user's request: Edge (background startup boost), WhatsApp, Copilot, Lenovo Vantage helper. VS Code left open.
+
+## Round 5 preview — VERIFIED (27 Nov 2026)
+- File: `storage/media/exports/episode-16/2026-11-27T16-18-00-1080p/mira-and-mango-up-and-down-1080p.mp4` (108.1 MB, over GitHub's 100 MB limit: not pushed).
+- H.264 1920×1080, 30 fps, 212.37 s · AAC 212.36 s · −15.7 LUFS (identical to the song).
+- Checked from the MP4: boxless title and end text; singing mouth (round, tongue, painted smile hidden) at 0:27.6–0:28.2; balloons hovering; Mango's head normal during the tail wag (1:03.8); river and cottages in the meadow.
+- The stuck export (job 74's predecessor, job 73) was cleared by restarting the server, which marks unfinished jobs as interrupted.
+- Status: Awaiting User Review. Not approved, not published.

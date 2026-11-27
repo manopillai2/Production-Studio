@@ -23,11 +23,12 @@ export const LOOK_DEFAULTS = {
   houses: 'none',       // none | few | some | many  (colourful cottages around the play area)
   wind: 'breezy',       // calm | breezy | windy     (how much trees, flowers and grass sway)
   birds: 'few',         // none | few | some         (birds circling in the sky)
+  detail: 'normal',     // normal | rich  (rich: rainbow flower beds, bunting, candy blossom trees, patchwork hills, a rainbow, hot-air balloons, butterflies)
 };
 export const LOOK_OPTIONS = {
   sky: ['auto', 'clear', 'soft', 'storybook'], clouds: ['none', 'few', 'some', 'many'], hills: ['none', 'low', 'rolling', 'tall'],
   trees: ['none', 'few', 'some', 'many'], dressing: ['none', 'light', 'lush'], transition: ['auto', 'cut', 'dissolve', 'dip-white', 'iris', 'wipe'],
-  river: ['none', 'behind', 'winding'], houses: ['none', 'few', 'some', 'many'], wind: ['calm', 'breezy', 'windy'], birds: ['none', 'few', 'some'],
+  river: ['none', 'behind', 'winding'], houses: ['none', 'few', 'some', 'many'], wind: ['calm', 'breezy', 'windy'], birds: ['none', 'few', 'some'], detail: ['normal', 'rich'],
 };
 export const lookOf = (projectLook, shotLook) => ({ ...LOOK_DEFAULTS, ...(projectLook || {}), ...Object.fromEntries(Object.entries(shotLook || {}).filter(([, v]) => v !== '' && v != null && v !== 'project')) });
 
@@ -268,12 +269,126 @@ function ground(color, seed) {
   return m;
 }
 
+
+// ---------------- "rich" detail: arranged, festive, colourful (not random bits here and there) ----------------
+const CANDY = ['#FF5A7A', '#FF9F1C', '#FFD23F', '#4CC35A', '#21C7C4', '#3E8BF0', '#8A5CF0', '#FF7EC4'];
+
+/** Flower beds in curved bands of one colour each (like tulip fields), around the back and sides of the play area. */
+function flowerBeds({ setRadius, r, keep, roles }) {
+  const grp = new THREE.Group();
+  const stemG = new THREE.CylinderGeometry(0.018, 0.022, 0.34, 5); stemG.translate(0, 0.17, 0);
+  const headG = new THREE.IcosahedronGeometry(0.1, 1); headG.scale(1, 0.7, 1); headG.translate(0, 0.37, 0);
+  const leafG = new THREE.SphereGeometry(0.16, 8, 6); leafG.scale(1, 0.35, 1); leafG.translate(0, 0.05, 0);
+  const items = [];
+  const bands = 7;
+  for (let b = 0; b < bands; b++) {
+    const rad = setRadius * 1.08 + b * 0.75; const col = CANDY[(b * 3) % CANDY.length];
+    const n = Math.round(rad * 9);
+    for (let i = 0; i < n; i++) {
+      const a = Math.PI * (0.98 + (1.04 * i) / n) + (r() - 0.5) * 0.02 + (b % 2) * 0.012; // back half + sides
+      const d = rad + (r() - 0.5) * 0.5; const x = Math.cos(a) * d, z = Math.sin(a) * d;
+      if (keep(x, z)) continue;
+      items.push({ x, z, s: 0.85 + r() * 0.45, c: col, ph: r() * 6.28 });
+    }
+  }
+  const stems = new THREE.InstancedMesh(stemG, new THREE.MeshStandardMaterial({ color: mix(roles.foliage, '#1f5a2a', 0.25), roughness: 1 }), items.length);
+  const heads = new THREE.InstancedMesh(headG, new THREE.MeshStandardMaterial({ roughness: 0.55 }), items.length);
+  const leaves = new THREE.InstancedMesh(leafG, new THREE.MeshStandardMaterial({ color: mix(roles.foliage, '#2f7a3a', 0.3), roughness: 0.9 }), items.length);
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(); const v = new THREE.Vector3(), sc = new THREE.Vector3();
+  const place = (t, amp) => items.forEach((it, i) => {
+    q.setFromEuler(e.set(amp * 0.5 * Math.sin(t * 1.7 + it.ph), 0, amp * Math.sin(t * 2.1 + it.ph * 1.3))); m.compose(v.set(it.x, 0, it.z), q, sc.setScalar(it.s));
+    stems.setMatrixAt(i, m); heads.setMatrixAt(i, m);
+  });
+  items.forEach((it, i) => { heads.setColorAt(i, col(it.c)); m.compose(v.set(it.x, 0, it.z), q.identity(), sc.setScalar(it.s)); leaves.setMatrixAt(i, m); });
+  place(0, 0); grp.add(stems, heads, leaves);
+  return { group: grp, sway: (t, amp) => { place(t, amp * 3); stems.instanceMatrix.needsUpdate = true; heads.instanceMatrix.needsUpdate = true; } };
+}
+
+/** Strings of triangle bunting flags between striped poles behind the play area; the flags flutter. */
+function bunting({ setRadius, r }) {
+  const grp = new THREE.Group(); const flags = [];
+  const poleMat = new THREE.MeshStandardMaterial({ color: '#FFFFFF', roughness: 0.5 });
+  const poles = []; const N = 7, R = setRadius * 1.02, H = 2.6;
+  for (let i = 0; i < N; i++) {
+    const a = Math.PI * (1.02 + (0.96 * i) / (N - 1)); const x = Math.cos(a) * R, z = Math.sin(a) * R;
+    const p = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, H, 10), poleMat); p.position.set(x, H / 2, z); p.castShadow = true; grp.add(p);
+    const top = new THREE.Mesh(new THREE.SphereGeometry(0.1, 12, 10), new THREE.MeshStandardMaterial({ color: CANDY[i % CANDY.length], roughness: 0.4 })); top.position.set(x, H + 0.05, z); grp.add(top);
+    poles.push(new THREE.Vector3(x, H - 0.05, z));
+  }
+  const flagG = new THREE.BufferGeometry(); flagG.setAttribute('position', new THREE.Float32BufferAttribute([-0.13, 0, 0, 0.13, 0, 0, 0, -0.3, 0], 3)); flagG.computeVertexNormals();
+  const ropeMat = new THREE.MeshStandardMaterial({ color: '#7A5A44', roughness: 1 });
+  let k = 0;
+  for (let i = 0; i + 1 < poles.length; i++) {
+    const A = poles[i], B = poles[i + 1]; const sag = 0.45;
+    const pts = []; for (let j = 0; j <= 16; j++) { const t = j / 16; const p = A.clone().lerp(B, t); p.y -= sag * 4 * t * (1 - t); pts.push(p); }
+    const rope = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 24, 0.012, 5), ropeMat); grp.add(rope);
+    const n = Math.max(4, Math.round(A.distanceTo(B) / 0.34));
+    for (let j = 1; j < n; j++) {
+      const t = j / n; const p = A.clone().lerp(B, t); p.y -= sag * 4 * t * (1 - t);
+      const f = new THREE.Mesh(flagG, new THREE.MeshStandardMaterial({ color: CANDY[k++ % CANDY.length], roughness: 0.6, side: THREE.DoubleSide }));
+      f.position.copy(p); f.lookAt(new THREE.Vector3(0, p.y, 0)); grp.add(f); flags.push({ f, ph: r() * 6.28, base: f.rotation.x });
+    }
+  }
+  return { group: grp, update: (t, amp) => { for (const x of flags) x.f.rotation.x = x.base + Math.sin(t * 4 + x.ph) * (0.15 + amp * 4); } };
+}
+
+/** A big soft rainbow arc in the sky behind the scene. */
+function rainbow(night) {
+  const grp = new THREE.Group(); if (night) return grp;
+  const cols = ['#FF5A5F', '#FF9F1C', '#FFD23F', '#4CC35A', '#3E8BF0', '#8A5CF0'];
+  cols.forEach((c, i) => {
+    const m = new THREE.Mesh(new THREE.TorusGeometry(70 - i * 2.2, 1.1, 8, 96, Math.PI), new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0.55, fog: false, depthWrite: false }));
+    grp.add(m);
+  });
+  grp.position.set(0, -6, -150); grp.renderOrder = -5;
+  return grp;
+}
+
+/** Striped hot-air balloons drifting slowly in the sky. */
+function skyBalloons(n, r, night) {
+  const grp = new THREE.Group(); const list = []; if (night) return { group: grp, update() {} };
+  for (let i = 0; i < n; i++) {
+    const b = new THREE.Group();
+    const env = new THREE.SphereGeometry(1, 24, 18); env.scale(1, 1.18, 1);
+    const pos = env.attributes.position; const cs = new Float32Array(pos.count * 3);
+    const c1 = col(CANDY[(i * 2) % CANDY.length]), c2 = col(CANDY[(i * 2 + 3) % CANDY.length]), c3 = col('#FFFFFF');
+    for (let k = 0; k < pos.count; k++) { const a = Math.atan2(pos.getZ(k), pos.getX(k)); const band = Math.floor(((a + Math.PI) / (2 * Math.PI)) * 10) % 3; const c = band === 0 ? c1 : band === 1 ? c2 : c3; cs.set([c.r, c.g, c.b], k * 3); }
+    env.setAttribute('color', new THREE.BufferAttribute(cs, 3));
+    b.add(new THREE.Mesh(env, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.5 })));
+    const basket = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.22, 0.32, 12), new THREE.MeshStandardMaterial({ color: '#C08A4A', roughness: 0.9 })); basket.position.y = -1.75; b.add(basket);
+    for (const [x, z] of [[-0.2, -0.2], [0.2, -0.2], [-0.2, 0.2], [0.2, 0.2]]) { const rope = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.6, 4), new THREE.MeshStandardMaterial({ color: '#6B5440' })); rope.position.set(x, -1.35, z); b.add(rope); }
+    const s = 1.6 + r() * 1.4; b.scale.setScalar(s);
+    const a = Math.PI * (1.15 + r() * 0.7); const d = 45 + r() * 40;
+    list.push({ b, x: Math.cos(a) * d, z: Math.sin(a) * d, y: 14 + r() * 14, ph: r() * 6.28, sp: 0.15 + r() * 0.2 });
+    grp.add(b);
+  }
+  return { group: grp, update: (t) => { for (const q of list) q.b.position.set(q.x + t * q.sp, q.y + Math.sin(t * 0.4 + q.ph) * 0.8, q.z); } };
+}
+
+/** Butterflies fluttering over the flower beds. */
+function butterflies(n, { setRadius, r }) {
+  const grp = new THREE.Group(); const list = [];
+  const wing = new THREE.BufferGeometry(); wing.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0, 0.16, 0.02, 0.1, 0.18, 0.02, -0.08, 0, 0, 0, 0.18, 0.02, -0.08, 0.06, 0, -0.14], 3)); wing.computeVertexNormals();
+  for (let i = 0; i < n; i++) {
+    const m = new THREE.MeshStandardMaterial({ color: CANDY[(i * 3 + 1) % CANDY.length], roughness: 0.5, side: THREE.DoubleSide });
+    const b = new THREE.Group(); const l = new THREE.Mesh(wing, m), rr = new THREE.Mesh(wing, m); rr.scale.x = -1; b.add(l, rr);
+    const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.015, 0.08, 4, 6), new THREE.MeshStandardMaterial({ color: '#3B3456' })); body.rotation.x = Math.PI / 2; b.add(body);
+    b.scale.setScalar(1.3); grp.add(b);
+    const a0 = Math.PI * (1.0 + r()); const R = setRadius * (1.15 + r() * 0.7);
+    list.push({ b, l, rr, a0, R, h: 0.6 + r() * 0.9, w: (0.18 + r() * 0.2) * (r() < 0.5 ? -1 : 1), ph: r() * 6.28 });
+  }
+  return { group: grp, update: (t) => { for (const q of list) {
+    const a = q.a0 + q.w * t + 0.15 * Math.sin(t * 0.9 + q.ph); q.b.position.set(Math.cos(a) * q.R, q.h + 0.25 * Math.sin(t * 2.3 + q.ph), Math.sin(a) * q.R);
+    q.b.rotation.y = -a + (q.w > 0 ? 0 : Math.PI); const f = 0.9 * Math.sin(t * 16 + q.ph); q.l.rotation.z = f; q.rr.rotation.z = -f;
+  } } };
+}
+
 /**
  * Build the landscape for one shot. setRadius = how far the scenery reaches (dressing starts outside it).
  * roles = World Style colour roles (foliage, foliage_far, flowers, sky_day). Returns { group, update(t), sky }.
  */
 export function buildLandscape({ look, preset = 'day', roles = {}, setRadius = 8, seed = 1, sunDir = new THREE.Vector3(4, 8, 6), keepClear = [] }) {
-  const L = lookOf(look);
+  const L = lookOf(look); const rich = L.detail === 'rich';
   const grp = new THREE.Group(); grp.name = 'landscape';
   const R = { foliage: roles.foliage || '#6CC45E', foliage_far: roles.foliage_far || '#5FB8A8', flowers: roles.flowers?.length ? roles.flowers : ['#FF7EC4', '#FFD23F', '#B98CF5', '#FF9234'], sky_day: roles.sky_day || '#4FB9F7' };
   const night = preset === 'night';
@@ -315,13 +430,18 @@ export function buildLandscape({ look, preset = 'day', roles = {}, setRadius = 8
       const c = mix(mix(i === 0 ? hillTint : mix(hillTint, R.foliage_far, 0.3).getStyle(), '#9CCB7E', 0.3).getStyle(), p.haze || p.horizon, haze + (night ? 0.25 : 0));
       const top = c.clone().offsetHSL(0, 0, 0.05);
       const ring = hillRing(a, b, h * hillH, c.getStyle(), seed * 31 + i, top.getStyle(), valley);
+      if (rich && i < 2) { // patchwork fields: soft stripes of lavender, sunflower, mint and blossom pink across the near hills
+        const P = ['#B79CF5', '#FFE066', '#9EE6B8', '#FFB3D1', '#FFC98A']; const pos = ring.mesh.geometry.attributes.position, cl = ring.mesh.geometry.attributes.color;
+        for (let k = 0; k < pos.count; k++) { const x = pos.getX(k), z = pos.getZ(k); const band = Math.floor((Math.atan2(z, x) + Math.PI) / (Math.PI / 9)) + i * 3; const tc = col(P[band % P.length]); const base = new THREE.Color(cl.getX(k), cl.getY(k), cl.getZ(k)); const mixd = base.lerp(mix(tc.getStyle(), p.haze || p.horizon, haze * 0.6), 0.55); cl.setXYZ(k, mixd.r, mixd.g, mixd.b); }
+        cl.needsUpdate = true;
+      }
       grp.add(ring.mesh); ringsOut.push({ ...ring, r0: a, r1: b });
     });
   }
 
   let treeSet = null; let dressSet = null;
   // Trees on the nearest two hill rings.
-  const treeN = { none: 0, few: 18, some: 45, many: 90 }[L.trees] ?? 45;
+  const treeN = Math.round(({ none: 0, few: 18, some: 45, many: 90 }[L.trees] ?? 45) * (rich ? 1.8 : 1));
   if (treeN && ringsOut.length) {
     const pts = [];
     for (let i = 0; i < treeN; i++) {
@@ -332,7 +452,8 @@ export function buildLandscape({ look, preset = 'day', roles = {}, setRadius = 8
       if (inRiver(x, z, 2.5)) continue; // no trees in the river valley
       pts.push({ x, z, y: ring.heightAt(x, z), s: sc });
     }
-    const crown = [mix(R.foliage, '#3F8F4A', 0.25).getStyle(), mix(R.foliage, R.foliage_far, 0.18).getStyle(), mix(R.foliage, '#2E7D4F', 0.45).getStyle(), mix(R.foliage, '#A6D86A', 0.3).getStyle()];
+    const crown = rich ? ['#FF9EC7', mix(R.foliage, '#3F8F4A', 0.25).getStyle(), '#FFC27A', mix(R.foliage, '#A6D86A', 0.3).getStyle(), '#C9A7F5', '#FFE27A', mix(R.foliage, R.foliage_far, 0.18).getStyle()] // blossom trees in candy colours
+      : [mix(R.foliage, '#3F8F4A', 0.25).getStyle(), mix(R.foliage, R.foliage_far, 0.18).getStyle(), mix(R.foliage, '#2E7D4F', 0.45).getStyle(), mix(R.foliage, '#A6D86A', 0.3).getStyle()];
     treeSet = trees(pts, crown.map((c) => mix(c, p.haze || p.horizon, night ? 0.45 : 0.15).getStyle()));
     grp.add(treeSet.group);
   }
@@ -387,6 +508,18 @@ export function buildLandscape({ look, preset = 'day', roles = {}, setRadius = 8
     const base = new THREE.Vector3(Math.cos(a) * d, 16 + r() * 22, Math.sin(a) * d);
     c.position.copy(base); grp.add(c); clouds.push({ obj: c, base, speed: 0.25 + r() * 0.35 });
   }
+  // Rich detail: arranged, colourful extras that fill the picture.
+  const extras = [];
+  if (rich) {
+    const r3 = rnd(seed * 2741 + 17);
+    const keep = (x, z) => keepClear.some((c) => Math.hypot(c[0] - x, c[2] - z) < 1.6) || inRiver(x, z, 0.5);
+    const beds = flowerBeds({ setRadius, r: r3, keep, roles: R }); grp.add(beds.group); extras.push({ sway: beds.sway });
+    const bt = bunting({ setRadius, r: r3 }); grp.add(bt.group); extras.push({ update: bt.update });
+    grp.add(rainbow(night));
+    const sb = skyBalloons(4, r3, night); grp.add(sb.group); extras.push({ update: sb.update });
+    const bf = butterflies(night ? 0 : 14, { setRadius, r: r3 }); grp.add(bf.group); extras.push({ update: bf.update });
+  }
+
   // Birds circling high up.
   const birdN = { none: 0, few: 4, some: 8 }[L.birds] ?? 0;
   const flock = birdN && !night ? birds(birdN, seed) : null;
@@ -395,6 +528,7 @@ export function buildLandscape({ look, preset = 'day', roles = {}, setRadius = 8
   const update = (t) => {
     for (const c of clouds) c.obj.position.x = ((((c.base.x + t * c.speed + 160) % 320) + 320) % 320) - 160;
     treeSet?.sway(t, windAmp); dressSet?.sway(t, windAmp); riv?.update(t); flock?.update(t);
+    for (const x of extras) { x.sway?.(t, windAmp); x.update?.(t, windAmp); }
   };
   return { group: grp, update, sky: p, groundColor };
 }

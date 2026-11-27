@@ -63,6 +63,7 @@ export default function App() {
     case 'rigged': pageEl = <Library key="rigged" kind="character" rigged />; title = 'My World · Characters with rig'; break;
     case 'props': pageEl = <Library key="prop" kind="prop" />; title = 'My World · Props'; break;
     case 'locations': pageEl = <Library key="location" kind="location" />; title = 'My World · Scenery'; break;
+    case 'landscapes': pageEl = <Library key="landscape" kind="landscape" />; title = 'My World · Landscapes'; break;
     case 'motion': pageEl = <MotionLibrary />; title = 'My World · Rigs & Clips'; break;
     case 'animstudio': pageEl = <AnimationStudio />; title = 'My World · Animation Studio'; break;
     case 'world': pageEl = <WorldStyle />; title = 'My World · World Style'; break;
@@ -102,6 +103,7 @@ export default function App() {
             {navLink('rigged', 'assemble', 'Characters with rig')}
             {navLink('props', 'sparkle', 'Props')}
             {navLink('locations', 'scenery', 'Scenery')}
+            {navLink('landscapes', 'scenery', 'Landscapes')}
             {navLink('motion', 'assemble', 'Rigs & Clips')}
             {navLink('animstudio', 'sparkle', 'Animation Studio')}
             <div className="nav-group">Settings</div>

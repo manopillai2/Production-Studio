@@ -1,10 +1,13 @@
 // Remove small detached pieces ("islands") from a .glb — e.g. a background object Meshy kept next to a character.
 // Works on static and rigged (skinned) models: only the triangle index lists change; vertices, UVs, textures,
 // skin weights and animations are untouched. Keeps every piece with at least `keep` of the largest piece's triangles.
-// usage: node tools/remove-islands.mjs <in.glb> <out.glb> [keepFraction=0.02]
+// usage: node tools/remove-islands.mjs <in.glb> <out.glb> [keepFraction=0.02] [--near]
+// --near: instead of by size, keep the pieces that touch the main piece's box (grown by 5%): attached parts stay, floating
+//         background bits (a cloud or leaves copied from the preview picture) go, whatever their size.
 import fs from 'node:fs';
 
-const [inFile, outFile, keepArg] = process.argv.slice(2);
+const args = process.argv.slice(2); const NEAR = args.includes('--near');
+const [inFile, outFile, keepArg] = args.filter((a) => a !== '--near');
 const KEEP = Number(keepArg || 0.02);
 const buf = fs.readFileSync(inFile);
 if (buf.readUInt32LE(0) !== 0x46546c67) throw new Error('Not a GLB file');
@@ -34,11 +37,16 @@ for (const mesh of json.meshes || []) for (const prim of mesh.primitives) {
   for (let t = 0; t < idx.length; t += 3) { const a = find(wid[idx[t]]), b = find(wid[idx[t + 1]]), c = find(wid[idx[t + 2]]); parent[b] = a; parent[find(c)] = a; }
   const count = new Map(); for (let t = 0; t < idx.length; t += 3) { const r = find(wid[idx[t]]); count.set(r, (count.get(r) || 0) + 1); }
   const biggest = Math.max(...count.values());
-  const keepRoot = new Set([...count].filter(([, n]) => n >= biggest * KEEP).map(([r]) => r));
+  let keepRoot = new Set([...count].filter(([, n]) => n >= biggest * KEEP).map(([r]) => r));
+  const boxes = new Map(); for (let t = 0; t < idx.length; t++) { const r = find(wid[idx[t]]); const v = idx[t]; let b = boxes.get(r); if (!b) boxes.set(r, (b = [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity])); for (let k = 0; k < 3; k++) { b[k] = Math.min(b[k], pos[v * 3 + k]); b[k + 3] = Math.max(b[k + 3], pos[v * 3 + k]); } }
+  if (NEAR) {
+    const main = [...count].find(([, n]) => n === biggest)[0]; const M = boxes.get(main); const g = [0, 1, 2].map((k) => (M[k + 3] - M[k]) * 0.05);
+    keepRoot = new Set([...count.keys()].filter((r) => { const b = boxes.get(r); return [0, 1, 2].every((k) => b[k] <= M[k + 3] + g[k] && b[k + 3] >= M[k] - g[k]); }));
+  }
   const kept = []; for (let t = 0; t < idx.length; t += 3) if (keepRoot.has(find(wid[idx[t]]))) kept.push(idx[t], idx[t + 1], idx[t + 2]);
   const removed = (idx.length - kept.length) / 3;
   if (removed) { kept.forEach((v, i) => bin[wr](v, start + i * sz)); ia.count = kept.length; }
-  report.push({ mesh: mesh.name, pieces: count.size, sizes: [...count.values()].sort((a, b) => b - a), kept: keepRoot.size, trianglesRemoved: removed, trianglesKept: kept.length / 3 });
+  report.push({ mesh: mesh.name, pieces: count.size, sizes: [...count.values()].sort((a, b) => b - a), kept: keepRoot.size, boxes: process.env.BOXES ? [...count].sort((a, b) => b[1] - a[1]).map(([r, n]) => [n, keepRoot.has(r), boxes.get(r).map((x) => +x.toFixed(2))]) : undefined, trianglesRemoved: removed, trianglesKept: kept.length / 3 });
 }
 // rebuild the GLB (JSON chunk padded with spaces, BIN chunk unchanged in size)
 const js = Buffer.from(JSON.stringify(json)); const jsPad = Buffer.concat([js, Buffer.alloc((4 - (js.length % 4)) % 4, 0x20)]);
