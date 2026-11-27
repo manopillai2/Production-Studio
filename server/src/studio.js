@@ -852,7 +852,7 @@ export function registerStudio(app, ctx) {
       look: { ...getSetting('world_look', {}), ...lookOf(ep) }, project_look: lookOf(ep), world_look: getSetting('world_look', {}), roles: currentProfile().roles, sections: sectionsOf(epId), title: ep.title, channel: { name: channel().name, colors: channel().colors, caption_style: channel().caption_style } };
   }));
   // ---- The project's look (landscape around the scenery, title/end cards, karaoke captions, default transition) ----
-  const LOOK_KEYS = { sky: ['auto', 'clear', 'soft', 'storybook'], clouds: ['none', 'few', 'some', 'many'], hills: ['none', 'low', 'rolling', 'tall'], trees: ['none', 'few', 'some', 'many'], dressing: ['none', 'light', 'lush'], transition: ['auto', 'cut', 'dissolve', 'dip-white', 'iris', 'wipe'], river: ['none', 'behind', 'winding'], houses: ['none', 'few', 'some', 'many'], wind: ['calm', 'breezy', 'windy'], birds: ['none', 'few', 'some'], detail: ['normal', 'rich'] };
+  const LOOK_KEYS = { sky: ['auto', 'clear', 'soft', 'storybook'], clouds: ['none', 'few', 'some', 'many'], hills: ['none', 'low', 'rolling', 'tall'], trees: ['none', 'few', 'some', 'many'], dressing: ['none', 'light', 'lush'], transition: ['auto', 'cut', 'dissolve', 'dip-white', 'iris', 'wipe'], river: ['none', 'behind', 'winding'], houses: ['none', 'few', 'some', 'many'], wind: ['calm', 'breezy', 'windy'], birds: ['none', 'few', 'some'], detail: ['normal', 'rich', 'focus'] };
   const lookOf = (ep) => { try { return JSON.parse(ep.look || '{}'); } catch { return {}; } };
   const cleanLook = (b, prev = {}) => {
     const o = { ...prev };
@@ -1020,6 +1020,7 @@ export function registerStudio(app, ctx) {
       if (c.height != null) camera.height = num(c.height, -1, 3, 0);
       if (SHOT_SIZES.includes(c.size)) camera.size = c.size;
       if (TRANSITIONS.includes(c.transition)) camera.transition = c.transition;
+      if (c.dof === 'off' || c.dof === 'auto') camera.dof = c.dof; else if (c.dof != null && Number.isFinite(Number(c.dof))) camera.dof = String(num(c.dof, 0, 2, 1));
       if ((preset === 'closeup' || preset === 'follow' || ['medium', 'closeup'].includes(camera.size)) && camera.target == null) camera.target = Math.round(num(c.target, 0, Math.max(0, actors.length - 1), 0));
       const light = typeof x.lighting === 'string' ? x.lighting : x.lighting?.preset;
       const look = {};

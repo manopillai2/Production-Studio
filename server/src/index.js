@@ -181,7 +181,7 @@ app.put('/api/world-style/inspiration/brief', h((req) => {
   return worldStyleOut();
 }));
 /** The world's default landscape (every project starts from it; Stage 4 → Look overrides it per project). */
-const WORLD_LOOK = { sky: ['auto', 'clear', 'soft', 'storybook'], clouds: ['none', 'few', 'some', 'many'], hills: ['none', 'low', 'rolling', 'tall'], trees: ['none', 'few', 'some', 'many'], dressing: ['none', 'light', 'lush'], transition: ['auto', 'cut', 'dissolve', 'dip-white', 'iris', 'wipe'], river: ['none', 'behind', 'winding'], houses: ['none', 'few', 'some', 'many'], wind: ['calm', 'breezy', 'windy'], birds: ['none', 'few', 'some'], detail: ['normal', 'rich'] };
+const WORLD_LOOK = { sky: ['auto', 'clear', 'soft', 'storybook'], clouds: ['none', 'few', 'some', 'many'], hills: ['none', 'low', 'rolling', 'tall'], trees: ['none', 'few', 'some', 'many'], dressing: ['none', 'light', 'lush'], transition: ['auto', 'cut', 'dissolve', 'dip-white', 'iris', 'wipe'], river: ['none', 'behind', 'winding'], houses: ['none', 'few', 'some', 'many'], wind: ['calm', 'breezy', 'windy'], birds: ['none', 'few', 'some'], detail: ['normal', 'rich', 'focus'] };
 const cleanWorldLook = (b, prev = {}) => {
   const o = { ...prev };
   for (const [k, opts] of Object.entries(WORLD_LOOK)) if (k in b) { if (opts.includes(b[k])) o[k] = b[k]; else delete o[k]; }

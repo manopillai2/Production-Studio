@@ -32,13 +32,19 @@ function seesaw(p) {
   const axle = tube([0, H, -0.36], [0, H, 0.36], 0.06, PAL.red); g.add(axle);
   for (const z of [-0.36, 0.36]) { const k = ball(0.09, PAL.red); k.position.set(0, H, z); g.add(k); }
   const plank = new THREE.Group(); plank.position.y = H; g.add(plank);
-  const board = box(L, 0.09, 0.36, PAL.purple, 0.04); board.position.y = 0.06; plank.add(board);
+  // A narrow plank and seat (like a real seesaw) so a child can sit astride with a leg down each side; the bumper is
+  // at the very end, beyond the seat, where no foot hangs. Handles can be left off one end (a dog has none in front).
+  const board = box(L, 0.09, 0.26, PAL.purple, 0.04); board.position.y = 0.06; plank.add(board);
+  const noHandle = new Set([].concat(p.no_handle || []));
   for (const s of [-1, 1]) {
-    const seat = box(0.46, 0.08, 0.44, PAL.pink, 0.04); seat.position.set(s * 1.32, 0.13, 0); plank.add(seat);
-    const post = tube([s * 1.0, 0.1, 0], [s * 1.0, 0.5, 0], 0.035, PAL.teal); plank.add(post);
-    const bar = tube([s * 1.0, 0.5, -0.2], [s * 1.0, 0.5, 0.2], 0.035, PAL.teal); plank.add(bar);
-    for (const z of [-0.2, 0.2]) { const k = ball(0.05, PAL.orange); k.position.set(s * 1.0, 0.5, z); plank.add(k); }
-    const bumper = ball(0.12, PAL.orange); bumper.position.set(s * 1.4, -0.08, 0); bumper.scale.set(1, 0.6, 1); plank.add(bumper);
+    const wide = new Set([].concat(p.wide_seat || [])).has(s < 0 ? 'a' : 'b'); // a wide seat for a dog: all four paws on it
+    const seat = box(wide ? 0.5 : 0.4, 0.08, wide ? 0.46 : 0.27, PAL.pink, 0.04); seat.position.set(s * 1.32, 0.13, 0); plank.add(seat);
+    if (!noHandle.has(s < 0 ? 'a' : 'b')) {
+      const post = tube([s * 0.98, 0.1, 0], [s * 0.98, 0.5, 0], 0.035, PAL.teal); plank.add(post);
+      const bar = tube([s * 0.98, 0.5, -0.18], [s * 0.98, 0.5, 0.18], 0.035, PAL.teal); plank.add(bar);
+      for (const z of [-0.18, 0.18]) { const k = ball(0.05, PAL.orange); k.position.set(s * 0.98, 0.5, z); plank.add(k); }
+    }
+    const bumper = ball(0.08, PAL.orange); bumper.position.set(s * 1.56, -0.03, 0); bumper.scale.set(1, 0.6, 1); plank.add(bumper);
   }
   const seats = { a: seatPoint('a', plank, [-1.3, 0.18, 0], Math.PI / 2), b: seatPoint('b', plank, [1.3, 0.18, 0], -Math.PI / 2) };
   const A = THREE.MathUtils.degToRad(p.amplitude ?? 15), P = p.period ?? 2.4;
@@ -81,16 +87,16 @@ function slide(p) {
   const g = new THREE.Group();
   const H = 1.3, Lz = 2.9;
   // platform with rails and a little roof
-  for (const [x, z] of [[-0.4, -0.35], [0.4, -0.35], [-0.4, 0.3], [0.4, 0.3]]) g.add(tube([x, 0, z], [x, H + 0.85, z], 0.055, PAL.blue));
-  const deck = box(0.95, 0.1, 0.8, PAL.yellow, 0.04); deck.position.set(0, H, -0.02); g.add(deck);
-  const roof = mesh(new THREE.ConeGeometry(0.78, 0.5, 4), PAL.red); roof.rotation.y = Math.PI / 4; roof.position.y = H + 1.1; g.add(roof);
-  const top = ball(0.1, PAL.yellow); top.position.y = H + 1.4; g.add(top);
-  for (const s of [-1, 1]) g.add(tube([s * 0.4, H + 0.45, -0.35], [s * 0.4, H + 0.45, 0.3], 0.03, PAL.orange));
+  for (const [x, z] of [[-0.6, -0.35], [0.6, -0.35], [-0.6, 0.3], [0.6, 0.3]]) g.add(tube([x, 0, z], [x, H + 1.1, z], 0.055, PAL.blue)); // tall enough for a child to stand under the roof
+  const deck = box(1.34, 0.1, 0.8, PAL.yellow, 0.04); deck.position.set(0, H, -0.02); g.add(deck);
+  const roof = mesh(new THREE.ConeGeometry(1.0, 0.5, 4), PAL.red); roof.rotation.y = Math.PI / 4; roof.position.y = H + 1.35; g.add(roof);
+  const top = ball(0.1, PAL.yellow); top.position.y = H + 1.65; g.add(top);
+  for (const s of [-1, 1]) g.add(tube([s * 0.6, H + 0.45, -0.35], [s * 0.6, H + 0.45, 0.3], 0.03, PAL.orange)); // wide enough for a child's head and hair
   // ladder
   for (const s of [-1, 1]) g.add(tube([s * 0.28, 0, -1.05], [s * 0.28, H, -0.42], 0.04, PAL.green));
   for (let i = 1; i <= 5; i++) { const k = i / 6; g.add(tube([-0.28, H * k, -1.05 + 0.63 * k], [0.28, H * k, -1.05 + 0.63 * k], 0.03, PAL.white)); }
   // chute: a wavy curve from the deck edge down to the ground at +z
-  const curve = new THREE.CatmullRomCurve3([new THREE.Vector3(0, H + 0.05, 0.35), new THREE.Vector3(0, H * 0.72, 0.35 + Lz * 0.28), new THREE.Vector3(0, H * 0.5, 0.35 + Lz * 0.5), new THREE.Vector3(0, H * 0.22, 0.35 + Lz * 0.78), new THREE.Vector3(0, 0.22, 0.35 + Lz)]);
+  const curve = new THREE.CatmullRomCurve3([new THREE.Vector3(0, H + 0.05, 0.35), new THREE.Vector3(0, H * 0.72, 0.35 + Lz * 0.28), new THREE.Vector3(0, H * 0.5, 0.35 + Lz * 0.5), new THREE.Vector3(0, H * 0.2, 0.35 + Lz * 0.78), new THREE.Vector3(0, 0.12, 0.35 + Lz), new THREE.Vector3(0, 0.1, 0.35 + Lz + 0.4)]); // ends low with a flat run-out, like a real slide
   const N = 60, Wd = 0.62; const pos = [], idx = [];
   for (let i = 0; i <= N; i++) {
     const c = curve.getPointAt(i / N); const wave = 0.03 * Math.sin(i * 0.6);
@@ -100,17 +106,17 @@ function slide(p) {
   const cg = new THREE.BufferGeometry(); cg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); cg.setIndex(idx); cg.computeVertexNormals();
   g.add(mesh(cg, mat(PAL.yellow, { side: THREE.DoubleSide, roughness: 0.25 })));
   for (const s of [-1, 1]) { const rail = mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(curve.getPoints(20).map((q) => q.clone().add(new THREE.Vector3(s * Wd / 2, 0.14, 0)))), 40, 0.04, 8), PAL.orange); g.add(rail); }
-  const leg = tube([0, 0, 0.35 + Lz * 0.55], [0, H * 0.45, 0.35 + Lz * 0.55], 0.05, PAL.blue); g.add(leg);
+  const leg = tube([0, 0, 0.35 + Lz * 0.55], [0, H * 0.42, 0.35 + Lz * 0.55], 0.05, PAL.blue); g.add(leg);
   const rider = seatPoint('top', g, [0, H + 0.12, 0.2], 0);
   return {
-    group: g, seats: { top: rider }, curve, height: H,
+    group: g, seats: { top: rider }, curve, height: H, endZ: 0.35 + Lz + 0.4,
     /** where a climber's feet are at ladder progress k (0 = bottom, 1 = top), in the slide's frame */
     climbAt(k) { const t = Math.min(1, Math.max(0, k)); return { pos: new THREE.Vector3(0, H * t + 0.02, -1.22 + 0.68 * t) }; },
     /** where a rider sits at slide progress k (0 = top, 1 = bottom), in the slide's frame */
     slideAt(k) {
       if (k <= 0) return { pos: new THREE.Vector3(0, H + 0.12, 0.2), pitch: 0 };
       const t = Math.min(1, k); const c = curve.getPointAt(t); const d = curve.getTangentAt(t);
-      return { pos: new THREE.Vector3(c.x, c.y + 0.1, c.z), pitch: Math.atan2(-d.y, d.z) * 0.6 };
+      return { pos: new THREE.Vector3(c.x, c.y + 0.15, c.z), pitch: Math.atan2(-d.y, d.z) * 0.95 }; // lie back along the chute's slope
     },
     pose() {},
   };
@@ -134,7 +140,7 @@ function merryGoRound(p) {
     spin.add(tube([x, 0.1, z], [x, 0.7, z], 0.035, PAL.yellow));
     spin.add(tube([x, 0.7, z], [x * 0.2, 0.9, z * 0.2], 0.035, PAL.yellow));
   }
-  const seats = {}; ['a', 'b', 'c'].forEach((n, i) => { const a = (i / 3) * Math.PI * 2 + 0.5 + Math.PI / 3; seats[n] = seatPoint(n, spin, [Math.cos(a) * 1.0, 0.12, Math.sin(a) * 1.0], Math.PI / 2 - a); }); // at the rim, facing out: legs dangle over the edge
+  const seats = {}; ['a', 'b', 'c'].forEach((n, i) => { const a = (i / 3) * Math.PI * 2 + 0.5 + Math.PI / 3; seats[n] = seatPoint(n, spin, [Math.cos(a) * 1.07, 0.12, Math.sin(a) * 1.07], Math.PI / 2 - a); }); // at the rim, facing out: knees past the edge, legs dangle clear of it
   const speed = p.speed ?? 0.55; // turns per second at full speed
   return {
     group: g, seats, height: Hd,

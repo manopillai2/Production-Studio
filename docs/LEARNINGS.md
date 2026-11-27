@@ -298,6 +298,25 @@ Implementation lessons:
 - **Circle runs:** pick the start angle so the run ends towards the camera. Keep the speed believable for the running animation: 0.5 lap in 2.5 s, not 0.85.
 - **Camera inside the place, not outside its ring.** A wide camera standing outside a diorama's rim gets the edge pieces (lollipops, rocks) in the foreground. Use `size: full` with `distance` instead.
 
+### Project 06 round 3 lessons (made for young viewers to follow; nothing goes through anything)
+- **Design for following, not for filling.** Research on young children points one way: decorated rooms cut attention and learning (Fisher et al. 2014); one picture at a time beats two (Flack & Horst 2017); toddlers track about three objects (Feigenson); motion and brightness pull the eye (Huston & Wright). So:
+  - one clear action per shot, the one being sung;
+  - at most three things to follow: the two characters and the one object they use;
+  - only the equipment in use is in the shot, centre stage;
+  - no decoration that moves (bunting, butterflies, sky balloons, birds);
+  - colour in big calm areas, not many small objects.
+  Sources are in `docs/project-06/EXECUTION-LOG.md` (round 3).
+- **The character must be the most salient thing on screen.** Background blur (depth of field), a rim light and a calmer, hazier background do this. Landscape `detail: focus` keeps the colour without the clutter.
+- **Repeat the chorus action, vary the angle.** Use the same action for the same words every time: seesaw = up and down, swing = high and low, merry-go-round = spin around, then nod, shake and wave. Change the camera side, height and time of day.
+- **Measure overlaps; don't eyeball them.** `tools/testing/clearance.mjs <episode> <outDir>` measures skin points against equipment, props, the other character, the scenery and the ground, for every shot. Run it before every export. `tools/testing/peek.mjs` renders any moment from any camera, for a close look at the contact.
+- **Riders need a limb solver, and the equipment needs to fit the body.**
+  - Poses can't know the equipment, so after posing, legs and arms are pushed out of it (swing out, knee up, bend).
+  - Four-legged riders keep their pose and are lifted onto the seat.
+  - Equipment proportions matter as much: a seat wider than a child's hips can't be straddled, so the seesaw seat is narrow and the dog's seat is wide. A tower must be taller and wider than the character and her hair.
+  - A slide must end low, and the child must step off.
+- **The same trap twice:** `rig.map` bones belong to a hidden analysis copy of the skeleton. Anything that moves a character's bones after posing must use `body.obj.getObjectByName(name)` (see `liveMap`).
+- **The server and the built client don't hot-reload.** Port 5175 serves `client/dist`, so rebuild with `npx vite build`. Server changes, such as a new allowed look value, need a server restart. Until then, the old code silently drops the new value.
+
 ## 14. Known limitations and ideas for later
 
 - Faces: no expressions on cue (blinks and singing mouths only). Lip-sync is spelling-based (no phoneme dictionary). Faint traces of the carved smile can show at the mouth corners. Four-legged characters (Mango) keep their painted mouth (his rig has a jaw bone that could be used).
@@ -306,7 +325,7 @@ Implementation lessons:
 - No hand contact: Mira can't hold the kite string or balloon ribbons. Props have no part animation.
 - Repeated chorus close-ups are still framed similarly. Shot Doctor could flag "same shot as the last chorus".
 - Shot Doctor idea: "action too small to see" when a gesture plays while the character covers less than 25% of the frame height.
-- No depth of field, water reflections or particles (leaves, sparkles).
+- No water reflections or particles (leaves, sparkles). (Depth of field was added in Project 06 round 3.)
 - No "duplicate project" button yet (Project 06 used a script).
 - 4K export is missing from the UI.
 - Claude token usage isn't tracked.

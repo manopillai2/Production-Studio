@@ -1,6 +1,7 @@
 // Deterministic 3D scene engine: renderAt(t) always produces the same frame for the same time, so the
 // browser preview (driven by the audio clock) and the MP4 export (frame by frame) match exactly.
 import * as THREE from 'three';
+import { checkClearance, clearLegs } from './Clearance.js';
 import { clone as skeletonClone } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { loadGLTF, measureBox } from './three-common.js';
 import { analyseRig, buildClip, MOVES } from './MoveMaker.js';
@@ -283,15 +284,48 @@ export class SceneEngine {
           gl_FragColor = vec4(c.rgb, a); }`,
     });
     this.overlay.scene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this.overlay.mat));
+    // Depth of field: the subject sharp, the background softly blurred, like a film camera. It keeps young viewers'
+    // eyes on the characters (a busy, sharp background competes for attention). Gather blur over a golden-angle
+    // disc; each sample counts only as far as its own blur reaches, so the sharp subject never bleeds into the blur.
+    this.dof = { scene: new THREE.Scene(), mat: new THREE.ShaderMaterial({
+      depthTest: false, depthWrite: false,
+      uniforms: { tColor: { value: null }, tDepth: { value: null }, near: { value: 0.1 }, far: { value: 700 }, focus: { value: 8 }, aperture: { value: 0 }, maxR: { value: 10 }, texel: { value: new THREE.Vector2(1 / width, 1 / height) } },
+      vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
+      fragmentShader: `#include <packing>
+        uniform sampler2D tColor; uniform sampler2D tDepth; uniform float near; uniform float far; uniform float focus; uniform float aperture; uniform float maxR; uniform vec2 texel; varying vec2 vUv;
+        float coc(vec2 uv){ float z = -perspectiveDepthToViewZ(texture2D(tDepth, uv).x, near, far);
+          float c = aperture * abs(z - focus) / max(z, 0.01);           // thin-lens blur, in units of maxR
+          c *= z < focus ? 0.6 : 1.0;                                     // gentler in front of the subject
+          return clamp(c, 0.0, 1.0) * maxR; }
+        void main(){
+          vec4 base = texture2D(tColor, vUv); float c0 = coc(vUv);
+          vec3 acc = base.rgb; float wsum = 1.0;
+          if (c0 > 0.6) {
+            for (int i = 0; i < 36; i++) {
+              float fi = float(i) + 0.5; float r = sqrt(fi / 36.0) * c0; float a = fi * 2.39996;
+              vec2 uv = vUv + vec2(cos(a), sin(a)) * r * texel;
+              float cs = coc(uv); float w = smoothstep(r - 1.0, r + 0.5, cs);
+              acc += texture2D(tColor, uv).rgb * w; wsum += w;
+            }
+          }
+          gl_FragColor = vec4(acc / wsum, 1.0);
+          #include <tonemapping_fragment>
+          #include <colorspace_fragment>
+        }`,
+    }), camera: this.overlay.camera };
+    this.dof.mat.toneMapped = true;
+    this.dof.scene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this.dof.mat));
     this.groups = []; this.times = []; this.setSize(width, height);
   }
   setSize(w, h) {
     this.renderer.setSize(w, h, false); this.camera.aspect = w / h; this.camera.updateProjectionMatrix();
     const pr = this.renderer.getPixelRatio();
     this.rt?.dispose(); this.rt = new THREE.WebGLRenderTarget(Math.round(w * pr), Math.round(h * pr), { samples: 4 }); this.rt.texture.colorSpace = THREE.SRGBColorSpace;
+    this.dofRT?.dispose(); this.dofRT = new THREE.WebGLRenderTarget(Math.round(w * pr), Math.round(h * pr), { samples: 4, type: THREE.HalfFloatType, depthTexture: new THREE.DepthTexture(Math.round(w * pr), Math.round(h * pr), THREE.FloatType) });
+    if (this.dof) this.dof.mat.uniforms.texel.value.set(1 / (w * pr), 1 / (h * pr));
     if (this.overlay) this.overlay.mat.uniforms.aspect.value = w / h;
   }
-  dispose() { this.rt?.dispose(); this.pmrem?.dispose(); for (const e of this.envCache.values()) e.dispose?.(); this.renderer.dispose(); this.renderer.forceContextLoss?.(); }
+  dispose() { this.rt?.dispose(); this.dofRT?.dispose(); this.pmrem?.dispose(); for (const e of this.envCache.values()) e.dispose?.(); this.renderer.dispose(); this.renderer.forceContextLoss?.(); }
 
   /** Image-based light from this shot's sky and ground, so models get soft colour from their surroundings. */
   _envFor(land, preset) {
@@ -318,6 +352,7 @@ export class SceneEngine {
     this.groups = [];
     this.times = shotTimes(shots, timing, duration);
     const byCard = Object.fromEntries(assets.map((a) => [a.card_id, a]));
+    this._names = Object.fromEntries(assets.map((a) => [a.card_id, a.name]));
     const urls = new Set();
     for (const s of shots) { const st = byCard[s.setting?.card_id]; if (st) urls.add(st.model_url); for (const a of s.actors || []) { if (byCard[a.card_id]) urls.add(byCard[a.card_id].model_url); const c = byCard[a.card_id]?.clips.find((x) => x.id === a.clip?.asset_id); if (c) urls.add(c.url); } }
     let done = 0;
@@ -450,9 +485,17 @@ export class SceneEngine {
     const obj = skeletonClone(src.scene); const mixer = new THREE.AnimationMixer(obj);
     const body = { key, obj, mixer, rig, start, travel: null, walk: null, idle: null, actions: [], phase: rnd(1) * 10, head: rig.map.head ? obj.getObjectByName(rig.map.head.name) : null, motionType: m.type, life: new Map() };
     // Ground contact: how high the ankles sit above the soles in the rest pose (to keep the standing foot on the floor).
-    if (rig.biped) {
+    if (rig.biped || rig.quad) {
       const feet = ['lFoot', 'rFoot'].map((k) => rig.map[k] && obj.getObjectByName(rig.map[k].name)).filter(Boolean);
-      if (feet.length === 2) { obj.updateMatrixWorld(true); const minY = measureBox(obj).min.y; body.feet = feet; body.footRest = Math.min(...feet.map((f) => f.getWorldPosition(new THREE.Vector3()).y)) - minY; }
+      if (feet.length < 2 && rig.quad) { // four legs: the paw at the end of each leg (the deepest bone of the chain)
+        for (const k of ['lFLwr', 'rFLwr', 'lRHock', 'rRHock']) {
+          const kk = rig.map[k] ? k : k.replace('Hock', 'Lwr'); let b = rig.map[kk] && obj.getObjectByName(rig.map[kk].name);
+          if (b) feet.push(b); // the hock / wrist joint too: when rolling over it can be the lowest point
+          while (b && b.children.find((c) => c.isBone)) b = b.children.find((c) => c.isBone);
+          if (b && !feet.includes(b)) feet.push(b);
+        }
+      }
+      if (feet.length >= 2) { obj.updateMatrixWorld(true); const minY = measureBox(obj).min.y; body.feet = feet; body.footRest = Math.min(...feet.map((f) => f.getWorldPosition(new THREE.Vector3()).y)) - minY; }
     }
     const labels = [];
     if (walkClip) {
@@ -502,6 +545,12 @@ export class SceneEngine {
       const at = eq.climbAt(k); const w = eq.group.localToWorld(at.pos.clone()).applyMatrix4(inv);
       return { pos: w, rot: [0, eq.group.rotation.y, 0], seat: null, stand: true };
     }
+    if (eq.type === 'slide' && r.off !== false && u > Number(r.at ?? 1) + Number(r.dur ?? 1.6) + Number(r.off_after ?? 0.4)) { // steps off the end onto the grass
+      const k = Math.min(1, (u - (Number(r.at ?? 1) + Number(r.dur ?? 1.6) + Number(r.off_after ?? 0.4))) / 0.6); const kk = k * k * (3 - 2 * k);
+      const end = eq.slideAt(1).pos; const off = new THREE.Vector3(0, 0, eq.endZ + 0.45);
+      const w = eq.group.localToWorld(end.clone().lerp(off, kk)).applyMatrix4(inv); w.y = w.y * (1 - kk) + g.surface(w.x, w.z) * kk;
+      return { pos: w, rot: [0, eq.group.rotation.y, 0], seat: null, stand: true };
+    }
     if (eq.type === 'slide') { // sits at the top, then slides down (ride.at / ride.dur seconds), and stays at the bottom
       const k = Math.min(1, Math.max(0, (u - Number(r.at ?? 1)) / Math.max(0.3, Number(r.dur ?? 1.6)))); const kk = k * k * (2 - k * 0.6) / 1.4;
       const at = eq.slideAt(Math.min(1, kk)); const w = eq.group.localToWorld(at.pos.clone()).applyMatrix4(inv);
@@ -512,6 +561,7 @@ export class SceneEngine {
     const gq = new THREE.Quaternion(); g.group.getWorldQuaternion(gq);
     const q = gq.invert().multiply(seat.getWorldQuaternion(new THREE.Quaternion()));
     const e = new THREE.Euler().setFromQuaternion(q, 'YXZ');
+    if (r.back) { const f = new THREE.Vector3(0, 0, 1).applyQuaternion(seat.getWorldQuaternion(new THREE.Quaternion())); f.y = 0; f.normalize(); wp.addScaledVector(f, -Number(r.back)); } // further onto the seat (a dog keeps its paws on a merry-go-round)
     return { pos: wp, rot: [e.x, e.y + Number(r.yaw || 0), e.z], seat };
   }
   /** Put the rider's hips exactly on the seat (the sitting pose lowers the hips; this removes any gap or overlap). */
@@ -524,11 +574,40 @@ export class SceneEngine {
     a.holder.position.x += ride.pos.x - hp.x; a.holder.position.z += ride.pos.z - hp.z; a.holder.position.y += ride.pos.y + lift - hp.y;
     a.holder.updateMatrixWorld(true);
   }
+  /** A four-legged rider sits ON its seat: its paws, legs and tail base never go below the seat's top surface. */
+  _onSeat(a, seat) {
+    const M = a.body.liveMap || {}; const top = seat.getWorldPosition(new THREE.Vector3()).y - 0.01;
+    // Tail up (a happy pup), so it wags above the seat instead of lying on it. Pick the turn direction that raises the tip.
+    const t0 = M.tail0, tipB = M.tail3 || M.tail2 || M.tail1;
+    if (t0 && tipB) {
+      const side = new THREE.Vector3(1, 0, 0).applyQuaternion(a.holder.getWorldQuaternion(new THREE.Quaternion()));
+      const q0 = t0.quaternion.clone(); (a.body.legUndo || (a.body.legUndo = [])).push([t0, q0.clone()]);
+      const tryAng = (ang) => { t0.quaternion.copy(q0); const pq = t0.parent.getWorldQuaternion(new THREE.Quaternion()).invert(); t0.quaternion.premultiply(new THREE.Quaternion().setFromAxisAngle(side.clone().applyQuaternion(pq).normalize(), ang)); t0.updateMatrixWorld(true); return tipB.getWorldPosition(new THREE.Vector3()).y; };
+      const up = tryAng(0.9), down = tryAng(-0.9); tryAng(up >= down ? 0.9 : -0.9);
+    }
+    let low = Infinity; const p = new THREE.Vector3();
+    for (const k of ['lFLwr', 'rFLwr', 'lRLwr', 'rRLwr', 'lRHock', 'rRHock', 'lRLeg', 'rRLeg', 'tail0', 'tail1', 'hips']) {
+      const b = M[k]; if (!b) continue; low = Math.min(low, b.getWorldPosition(p).y);
+      const tip = b.children.find((c) => c.isBone); if (tip && /Hock|FLwr/.test(k)) low = Math.min(low, tip.getWorldPosition(p).y);
+    }
+    // A tilted seat (the seesaw): measure height above the seat's own plane, not above its centre.
+    const sp = seat.getWorldPosition(new THREE.Vector3()); const n = new THREE.Vector3(0, 1, 0).applyQuaternion(seat.getWorldQuaternion(new THREE.Quaternion()));
+    let lowPlane = Infinity;
+    for (const k of ['lFLwr', 'rFLwr', 'lRLwr', 'rRLwr', 'lRHock', 'rRHock', 'lRLeg', 'rRLeg', 'tail0', 'tail1', 'tail2', 'tail3', 'hips']) {
+      const b = M[k]; if (!b) continue; const q = b.getWorldPosition(new THREE.Vector3()); lowPlane = Math.min(lowPlane, q.sub(sp).dot(n));
+      const tip = b.children.find((c) => c.isBone); if (tip) lowPlane = Math.min(lowPlane, tip.getWorldPosition(new THREE.Vector3()).sub(sp).dot(n));
+    }
+    const pad = 0.045 * a.h0 * Number(a.actor.scale ?? 1); // paw / tail thickness
+    const need = Math.max(top - low, (-0.01 - lowPlane) / Math.max(0.5, n.y));
+    if (need <= -pad) return;
+    a.holder.position.y += need + pad; a.holder.updateMatrixWorld(true);
+  }
   _poseBody(a, u) {
     const B = a.body; const fade = (x, w) => Math.min(1, Math.max(0, x / w));
     // Undo last frame's life-layer turns first: the mixer only rewrites a bone when its animated value changes, so
     // without this the small turns would pile up frame after frame (a head that slowly spins round).
     if (B.life) for (const [bone, r] of B.life) { bone.quaternion.copy(r.base); r.turned = false; }
+    if (B.legUndo?.length) { for (let i = B.legUndo.length - 1; i >= 0; i--) B.legUndo[i][0].quaternion.copy(B.legUndo[i][1]); B.legUndo.length = 0; } // undo last frame's leg clearing
     let walkW = 0;
     if (B.walk) {
       if (B.travel != null) { const t0 = B.start, t1 = B.start + B.travel; walkW = Math.min(fade(u - t0 + 0.15, 0.3), fade(t1 - u + 0.15, 0.4)); }
@@ -561,6 +640,14 @@ export class SceneEngine {
       const k = Math.min(1, Math.max(0, (gap - 0.025 * h) / (0.05 * h))); const keep = k * k * (3 - 2 * k);
       const dy = gap < 0 ? -gap : -gap * (1 - keep);
       if (Math.abs(dy) > 1e-5) { B.obj.position.y = B.baseY + dy; B.obj.updateMatrixWorld(true); }
+      // Skin check: no part of the body (a chubby leg, a tail, a hand during a roll) may be below the floor, even when
+      // the joints are above it. ~250 real skin points, skinned with this frame's pose.
+      const sk = B.skinPts || (B.skinPts = (() => { const out = []; let total = 0; B.obj.traverse((m) => { if (m.isSkinnedMesh) total += m.geometry.attributes.position.count; });
+        const stride = Math.max(1, Math.floor(total / 250)); B.obj.traverse((m) => { if (m.isSkinnedMesh) for (let i = 0; i < m.geometry.attributes.position.count; i += stride) out.push([m, i]); }); return out; })());
+      if (sk.length && par) {
+        let lowSkin = Infinity; for (const [m, i] of sk) { m.getVertexPosition(i, v); v.applyMatrix4(m.matrixWorld); par.worldToLocal(v); if (v.y < lowSkin) lowSkin = v.y; }
+        if (lowSkin < -0.004 * h) { B.obj.position.y += -lowSkin; B.obj.updateMatrixWorld(true); }
+      }
     }
   }
 
@@ -585,6 +672,14 @@ export class SceneEngine {
       motionActor = { ...a, motion: { ...a.motion, amount: Math.min(Number(a.motion.amount ?? 0.12), cap.amount), speed: Math.min(Number(a.motion.speed ?? 3), cap.speed) } };
     }
     return { holder, actor: a, motionActor, mixer, clipDur, sky, skyBase: 0, kind, h0, w0 };
+  }
+
+  /** Clearance check at song time t: which body parts go inside equipment, props, scenery, the other character or the ground. */
+  clearanceAt(t, opts = {}) {
+    const k = this.shotIndexAt(t); const g = this.groups[k]; if (!g) return { shot: k, hits: [] };
+    const { start, length: D } = this.times[k]; this._poseActors(g, Math.max(0, t - start), D);
+    const names = g.actors.map((a, i) => `${this._names?.[a.actor.card_id] || 'actor'}#${i}`);
+    return { shot: k, hits: checkClearance(g, { ...opts, names }) };
   }
 
   shotIndexAt(t) { const i = this.times.findIndex((x) => t >= x.start && t < x.end); return i >= 0 ? i : t >= (this.times.at(-1)?.end ?? 0) ? this.times.length - 1 : 0; }
@@ -632,9 +727,26 @@ export class SceneEngine {
     this._skyInFrame(g);
     this._light(g);
     g.land?.update(t);
-    this.renderer.setRenderTarget(target);
-    this.renderer.render(this.scene, this.camera);
+    const ap = this._aperture(g);
+    if (ap > 0 && this.dofRT) { // scene → colour + depth, then the blur pass to the screen / transition target
+      this.renderer.setRenderTarget(this.dofRT); this.renderer.render(this.scene, this.camera);
+      const U = this.dof.mat.uniforms; const H = this.dofRT.height;
+      Object.assign(U.tColor, { value: this.dofRT.texture }); Object.assign(U.tDepth, { value: this.dofRT.depthTexture });
+      U.near.value = this.camera.near; U.far.value = this.camera.far; U.focus.value = this.camera.position.distanceTo(this._lookAt || new THREE.Vector3());
+      U.aperture.value = ap; U.maxR.value = H * 0.0095; // at most ~10 px of blur at 1080p
+      this.renderer.setRenderTarget(target); this.renderer.render(this.dof.scene, this.dof.camera);
+    } else {
+      this.renderer.setRenderTarget(target);
+      this.renderer.render(this.scene, this.camera);
+    }
     this.renderer.setRenderTarget(null);
+  }
+  /** How strong the background blur is for this shot: camera.dof = 'off' | 'auto' (by shot size) | a number 0..2. */
+  _aperture(g) {
+    const d = g.shot.camera?.dof ?? lookOf(this.look).dof ?? 'auto';
+    if (d === 'off' || d === false) return 0;
+    if (Number.isFinite(Number(d)) && d !== 'auto' && d !== '') return Math.max(0, Math.min(2, Number(d)));
+    return { closeup: 1.6, medium: 1.25, full: 0.95, wide: 0.6, extreme_wide: 0.3, 'extreme-wide': 0.3 }[this._shotSize] ?? 0.9;
   }
 
   _sectionOf(shot) {
@@ -763,7 +875,16 @@ export class SceneEngine {
         a.holder.position.copy(ride.pos); a.holder.rotation.set(ride.rot[0], ride.rot[1], ride.rot[2]); const sc = Number(a.actor.scale ?? 1); a.holder.scale.set(sc, sc, sc);
         if (a.body) a.body.riding = !ride.stand;
         if (a.blob) { const gy = g.surface(ride.pos.x, ride.pos.z); a.blob.position.set(ride.pos.x, gy + 0.03, ride.pos.z); const bs = Math.max(0.4, a.w0 * sc * 0.9); a.blob.scale.set(bs, bs * 0.8, 1); a.blob.material.opacity = 0.35; }
-        if (a.body && withClips) { this._poseBody(a, u); if (!ride.stand) this._seatHips(g, a, ride); }
+        if (a.body && withClips) {
+          this._poseBody(a, u); if (!ride.stand) this._seatHips(g, a, ride);
+          if (g.equip?.length && a.actor.ride?.clear !== false) { // legs never go into the equipment or the floor
+            const inv = new THREE.Matrix4().copy(g.group.matrixWorld).invert(); const gp = new THREE.Vector3();
+            const ground = (x, z) => { gp.set(x, 0, z).applyMatrix4(inv); return g.surface(gp.x, gp.z) + g.group.matrixWorld.elements[13]; };
+            a.holder.updateMatrixWorld(true);
+            a.body.legLeft = clearLegs(a, g.equip, ground, (a.body.rig.quad ? 0.1 : 0.055) * a.h0 * Number(a.actor.scale ?? 1)); // limb thickness: a chubby pup's legs are thicker
+            if (a.body.rig.quad && ride.seat) this._onSeat(a, ride.seat);
+          }
+        }
         return;
       }
       if (a.body) a.body.riding = false;
@@ -963,7 +1084,7 @@ export class SceneEngine {
     if (adj.toward || adj.dy) { for (let i = 0; i < 3; i++) pos[i] = look[i] + (pos[i] - look[i]) * (1 - adj.toward); pos[1] += adj.dy; } // clear view (see _fitCamera)
     pos[1] = Math.max(pos[1], g.surface(pos[0], pos[2]) + 0.45); // never inside the hill
     cam.position.set(...pos); cam.lookAt(...look);
-    this._lookAt = new THREE.Vector3(...look); this._frameV = V;
+    this._lookAt = new THREE.Vector3(...look); this._frameV = V; this._shotSize = size;
   }
 
   /** Lights, fog and reflections from this shot's sky (look + lighting preset). */

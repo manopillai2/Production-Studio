@@ -23,12 +23,12 @@ export const LOOK_DEFAULTS = {
   houses: 'none',       // none | few | some | many  (colourful cottages around the play area)
   wind: 'breezy',       // calm | breezy | windy     (how much trees, flowers and grass sway)
   birds: 'few',         // none | few | some         (birds circling in the sky)
-  detail: 'normal',     // normal | rich  (rich: rainbow flower beds, bunting, candy blossom trees, patchwork hills, a rainbow, hot-air balloons, butterflies)
+  detail: 'normal',     // normal | rich | focus  (rich: flower beds, bunting, blossom trees, patchwork hills, rainbow, hot-air balloons, butterflies; focus: bright and colourful but calm — patchwork hills, blossom trees, a few flower bands far back, nothing moving that competes with the characters)
 };
 export const LOOK_OPTIONS = {
   sky: ['auto', 'clear', 'soft', 'storybook'], clouds: ['none', 'few', 'some', 'many'], hills: ['none', 'low', 'rolling', 'tall'],
   trees: ['none', 'few', 'some', 'many'], dressing: ['none', 'light', 'lush'], transition: ['auto', 'cut', 'dissolve', 'dip-white', 'iris', 'wipe'],
-  river: ['none', 'behind', 'winding'], houses: ['none', 'few', 'some', 'many'], wind: ['calm', 'breezy', 'windy'], birds: ['none', 'few', 'some'], detail: ['normal', 'rich'],
+  river: ['none', 'behind', 'winding'], houses: ['none', 'few', 'some', 'many'], wind: ['calm', 'breezy', 'windy'], birds: ['none', 'few', 'some'], detail: ['normal', 'rich', 'focus'],
 };
 export const lookOf = (projectLook, shotLook) => ({ ...LOOK_DEFAULTS, ...(projectLook || {}), ...Object.fromEntries(Object.entries(shotLook || {}).filter(([, v]) => v !== '' && v != null && v !== 'project')) });
 
@@ -274,15 +274,14 @@ function ground(color, seed) {
 const CANDY = ['#FF5A7A', '#FF9F1C', '#FFD23F', '#4CC35A', '#21C7C4', '#3E8BF0', '#8A5CF0', '#FF7EC4'];
 
 /** Flower beds in curved bands of one colour each (like tulip fields), around the back and sides of the play area. */
-function flowerBeds({ setRadius, r, keep, roles }) {
+function flowerBeds({ setRadius, r, keep, roles, bands = 7, from = 1.08 }) {
   const grp = new THREE.Group();
   const stemG = new THREE.CylinderGeometry(0.018, 0.022, 0.34, 5); stemG.translate(0, 0.17, 0);
   const headG = new THREE.IcosahedronGeometry(0.1, 1); headG.scale(1, 0.7, 1); headG.translate(0, 0.37, 0);
   const leafG = new THREE.SphereGeometry(0.16, 8, 6); leafG.scale(1, 0.35, 1); leafG.translate(0, 0.05, 0);
   const items = [];
-  const bands = 7;
   for (let b = 0; b < bands; b++) {
-    const rad = setRadius * 1.08 + b * 0.75; const col = CANDY[(b * 3) % CANDY.length];
+    const rad = setRadius * from + b * 0.75; const col = CANDY[(b * 3) % CANDY.length];
     const n = Math.round(rad * 9);
     for (let i = 0; i < n; i++) {
       const a = Math.PI * (0.98 + (1.04 * i) / n) + (r() - 0.5) * 0.02 + (b % 2) * 0.012; // back half + sides
@@ -388,7 +387,7 @@ function butterflies(n, { setRadius, r }) {
  * roles = World Style colour roles (foliage, foliage_far, flowers, sky_day). Returns { group, update(t), sky }.
  */
 export function buildLandscape({ look, preset = 'day', roles = {}, setRadius = 8, seed = 1, sunDir = new THREE.Vector3(4, 8, 6), keepClear = [] }) {
-  const L = lookOf(look); const rich = L.detail === 'rich';
+  const L = lookOf(look); const rich = L.detail === 'rich'; const focus = L.detail === 'focus'; const colourful = rich || focus;
   const grp = new THREE.Group(); grp.name = 'landscape';
   const R = { foliage: roles.foliage || '#6CC45E', foliage_far: roles.foliage_far || '#5FB8A8', flowers: roles.flowers?.length ? roles.flowers : ['#FF7EC4', '#FFD23F', '#B98CF5', '#FF9234'], sky_day: roles.sky_day || '#4FB9F7' };
   const night = preset === 'night';
@@ -430,7 +429,7 @@ export function buildLandscape({ look, preset = 'day', roles = {}, setRadius = 8
       const c = mix(mix(i === 0 ? hillTint : mix(hillTint, R.foliage_far, 0.3).getStyle(), '#9CCB7E', 0.3).getStyle(), p.haze || p.horizon, haze + (night ? 0.25 : 0));
       const top = c.clone().offsetHSL(0, 0, 0.05);
       const ring = hillRing(a, b, h * hillH, c.getStyle(), seed * 31 + i, top.getStyle(), valley);
-      if (rich && i < 2) { // patchwork fields: soft stripes of lavender, sunflower, mint and blossom pink across the near hills
+      if (colourful && i < 2) { // patchwork fields: soft stripes of lavender, sunflower, mint and blossom pink across the near hills
         const P = ['#B79CF5', '#FFE066', '#9EE6B8', '#FFB3D1', '#FFC98A']; const pos = ring.mesh.geometry.attributes.position, cl = ring.mesh.geometry.attributes.color;
         for (let k = 0; k < pos.count; k++) { const x = pos.getX(k), z = pos.getZ(k); const band = Math.floor((Math.atan2(z, x) + Math.PI) / (Math.PI / 9)) + i * 3; const tc = col(P[band % P.length]); const base = new THREE.Color(cl.getX(k), cl.getY(k), cl.getZ(k)); const mixd = base.lerp(mix(tc.getStyle(), p.haze || p.horizon, haze * 0.6), 0.55); cl.setXYZ(k, mixd.r, mixd.g, mixd.b); }
         cl.needsUpdate = true;
@@ -441,7 +440,7 @@ export function buildLandscape({ look, preset = 'day', roles = {}, setRadius = 8
 
   let treeSet = null; let dressSet = null;
   // Trees on the nearest two hill rings.
-  const treeN = Math.round(({ none: 0, few: 18, some: 45, many: 90 }[L.trees] ?? 45) * (rich ? 1.8 : 1));
+  const treeN = Math.round(({ none: 0, few: 18, some: 45, many: 90 }[L.trees] ?? 45) * (rich ? 1.8 : focus ? 0.8 : 1));
   if (treeN && ringsOut.length) {
     const pts = [];
     for (let i = 0; i < treeN; i++) {
@@ -452,7 +451,7 @@ export function buildLandscape({ look, preset = 'day', roles = {}, setRadius = 8
       if (inRiver(x, z, 2.5)) continue; // no trees in the river valley
       pts.push({ x, z, y: ring.heightAt(x, z), s: sc });
     }
-    const crown = rich ? ['#FF9EC7', mix(R.foliage, '#3F8F4A', 0.25).getStyle(), '#FFC27A', mix(R.foliage, '#A6D86A', 0.3).getStyle(), '#C9A7F5', '#FFE27A', mix(R.foliage, R.foliage_far, 0.18).getStyle()] // blossom trees in candy colours
+    const crown = colourful ? ['#FF9EC7', mix(R.foliage, '#3F8F4A', 0.25).getStyle(), '#FFC27A', mix(R.foliage, '#A6D86A', 0.3).getStyle(), '#C9A7F5', '#FFE27A', mix(R.foliage, R.foliage_far, 0.18).getStyle()] // blossom trees in candy colours
       : [mix(R.foliage, '#3F8F4A', 0.25).getStyle(), mix(R.foliage, R.foliage_far, 0.18).getStyle(), mix(R.foliage, '#2E7D4F', 0.45).getStyle(), mix(R.foliage, '#A6D86A', 0.3).getStyle()];
     treeSet = trees(pts, crown.map((c) => mix(c, p.haze || p.horizon, night ? 0.45 : 0.15).getStyle()));
     grp.add(treeSet.group);
@@ -518,6 +517,10 @@ export function buildLandscape({ look, preset = 'day', roles = {}, setRadius = 8
     grp.add(rainbow(night));
     const sb = skyBalloons(4, r3, night); grp.add(sb.group); extras.push({ update: sb.update });
     const bf = butterflies(night ? 0 : 14, { setRadius, r: r3 }); grp.add(bf.group); extras.push({ update: bf.update });
+  } else if (focus) { // three calm bands of colour, well behind the play area; nothing that flutters or flies about
+    const r3 = rnd(seed * 2741 + 17);
+    const keep = (x, z) => keepClear.some((c) => Math.hypot(c[0] - x, c[2] - z) < 1.6) || inRiver(x, z, 0.5);
+    const beds = flowerBeds({ setRadius, r: r3, keep, roles: R, bands: 3, from: 1.35 }); grp.add(beds.group); extras.push({ sway: (t, a) => beds.sway(t, a * 0.3) });
   }
 
   // Birds circling high up.

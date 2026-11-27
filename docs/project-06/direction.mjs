@@ -1,234 +1,251 @@
-// Project 06 — "Mira and Mango: Playground Party!" — the full direction (38 shots), cinematic and playful.
-// Same song and lyric timing as Project 05. Three places, each with a fixed layout (continuity between shots):
-//   Rainbow Playground (day, and the finale at sunset): seesaw, swing set, slide, merry-go-round
-//   Lollipop Candy Garden (day): seesaw, merry-go-round, ice-cream cart, two giant pinwheels, kite, pink balloons
-//   Mushroom Fairy Glade (sunset → dusk): swing set, seesaw, beach ball, hot-air balloon in the sky
-// Lessons applied (docs/LEARNINGS.md): what the lyric says is shown on that line (balloons float on "Up float balloons",
-// the kite flies on "Red kite flying high"); gestures in full/medium shots; no two neighbouring shots framed the same;
-// camera variety (crane, low hero angles, side angles, orbits, push-ins, close-ups while singing); walks share one speed
-// curve; riders sit on real moving seats.
+// Project 06 — "Mira and Mango: Playground Party!" — Round 3 direction: made for young viewers to FOLLOW.
+// Same song, lyric timing and characters. Rules (research summary in EXECUTION-LOG.md, round 3):
+//  1. One clear action per shot, the one the lyric is singing about at that moment.
+//  2. At most three things to follow: Mira, Mango and the ONE object they use. Only the equipment in use is in the
+//     shot, centre stage on the open floor; no extra props "for decoration".
+//  3. Calm, bright background: landscape detail "focus" (colour bands, no bunting, sky balloons, butterflies, birds or
+//     houses), calm wind, and background blur so the characters are the sharpest, brightest thing on screen.
+//  4. Big characters: medium and full shots at a child's eye level; close-ups while singing; wide only to show a place.
+//  5. The same chorus action every time (seesaw = up and down, swing = high and low, merry-go-round = spin around,
+//     nod / shake / wave = yes, no, hello, goodbye, "copy me" to the viewer), from new angles: children enjoy
+//     knowing what comes next.
+//  6. Two places only (the Rainbow Playground is home; the Lollipop Candy Garden for the kite), and golden sunset light
+//     for "Wave goodbye to the setting sun" and the finale.
+// Every shot is checked with tools/testing/clearance.mjs: nothing may go through anything.
 import { call, cards, replaceShots, CARD, EP } from './shotlib.mjs';
 await cards();
 const scene = await call('GET', `/api/episodes/${EP}/scene`);
 const L = scene.timing.lines; const st = (i) => L[i].start, en = (i) => L[i].end;
 
-// ---------- places (equipment layouts never move between shots of the same place) ----------
-const PG = (extra = {}) => ({ card_id: CARD.playground, scale: 1, equipment: [
-  { type: 'seesaw', pos: [-0.5, 0, 0.9], rot_y: 0, period: 2.4, amplitude: 15 },
-  { type: 'swing', pos: [-3.0, 0, -3.2], rot_y: 0.35 },
-  { type: 'slide', pos: [3.8, 0, -3.2], rot_y: -0.05 },
-  { type: 'merry-go-round', pos: [-3.9, 0, 0.6], speed: 0.45 },
-  ...(extra.more || [])], ...(extra.seesaw ? { equipment: undefined } : {}) });
-const pgEq = (over = {}) => { const s = PG({ more: over.more }); Object.entries(over).forEach(([k, v]) => { if (k !== 'more') Object.assign(s.equipment[Number(k)], v); }); return s; };
-const CG = (over = {}) => { const s = { card_id: CARD.candy, scale: 1, equipment: [
-  { type: 'seesaw', pos: [-0.8, 0, -0.4], rot_y: 0.15, period: 2.3, amplitude: 15 },
-  { type: 'merry-go-round', pos: [3.0, 0, -1.3], speed: 0.5 },
-  ...(over.more || [])] }; Object.entries(over).forEach(([k, v]) => { if (k !== 'more') Object.assign(s.equipment[Number(k)], v); }); return s; };
-const GL = (over = {}) => { const s = { card_id: CARD.glade, scale: 1.35, equipment: [
-  { type: 'swing', pos: [-1.6, 0, -1.6], rot_y: 0.2, period: 2.8, amplitude: 26 },
-  { type: 'seesaw', pos: [2.0, 0, 0.6], rot_y: -0.3, period: 3.4, amplitude: 10 },
-  ...(over.more || [])] }; Object.entries(over).forEach(([k, v]) => { if (k !== 'more') Object.assign(s.equipment[Number(k)], v); }); return s; };
+// ---------- look: colourful but calm ----------
+const CALM = { detail: 'focus', houses: 'none', dressing: 'light', trees: 'some', birds: 'none', wind: 'calm', clouds: 'few', river: 'none' };
+await call('PUT', `/api/episodes/${EP}/look`, { ...CALM, sky: 'storybook' });
+const day = { preset: 'day', look: CALM }, morning = { preset: 'morning', look: CALM }, sunset = { preset: 'sunset', look: CALM };
+
+// ---------- places: the equipment in use sits centre stage ----------
+const SEESAW = { type: 'seesaw', pos: [0, 0, 0.4], rot_y: 0, period: 2.4, amplitude: 14, no_handle: 'b', wide_seat: 'b' };
+const SWING = { type: 'swing', pos: [0, 0, 0], rot_y: 0, period: 2.6, amplitude: 28 };
+const MERRY = { type: 'merry-go-round', pos: [0, 0, 0.3], speed: 0.42 };
+const SLIDE = { type: 'slide', pos: [0, 0, -1.4], rot_y: 0 };
+const pg = (...equipment) => ({ card_id: CARD.playground, scale: 1, equipment });
+const cg = (...equipment) => ({ card_id: CARD.candy, scale: 1, equipment });
+const ALL = [ // the one establishing shot shows everything the children will play on
+  { ...SEESAW, pos: [-0.5, 0, 0.9] }, { ...SWING, pos: [-3.0, 0, -3.2], rot_y: 0.35 }, { ...SLIDE, pos: [3.8, 0, -3.2], rot_y: -0.05 }, { ...MERRY, pos: [-3.9, 0, 0.6] },
+];
 
 // ---------- actors ----------
 const MIRA = 0.75, MANGO = 0.38;
 const mira = (pos, more = {}) => ({ card_id: CARD.mira, pos, scale: MIRA, ...more });
 const mango = (pos, more = {}) => ({ card_id: CARD.mango, pos, scale: MANGO, look_at: 0, ...more });
-const prop = (card, pos, more = {}) => ({ card_id: card, pos, scale: 1, ...more });
-const ride = (equip, seat, more = {}) => ({ ride: { equip, seat, ...more } });
+const ball = (pos, more = {}) => ({ card_id: CARD.ball, pos, scale: 0.45, ...more });
 const hold = (move, seconds, extra = {}) => ({ move, at: 0, seconds, hold: true, ...extra });
-// seat positions (for framing; the engine places riders exactly)
-const PGP = { seesawA: [-1.8, 0, 0.9], seesawB: [0.8, 0, 0.9], swingA: [-3.58, 0, -2.99], swingB: [-2.42, 0, -3.41], mgr: [-3.9, 0, 0.6], slideTop: [3.8, 0, -3.0], slideEnd: [3.64, 0, 0.05] };
-const CGP = { seesawA: [-2.05, 0, -0.2], seesawB: [0.45, 0, -0.6], mgr: [3.0, 0, -1.3] };
-const GLP = { swingA: [-2.2, 0, -1.48], swingB: [-1.0, 0, -1.72], seesawA: [0.76, 0, 0.98], seesawB: [3.24, 0, 0.22] };
+const A = (move, at, extra = {}) => ({ move, at, ...extra });
+// riders (equipment index 0 in every ride shot)
+const onSeesaw = (period = 2.4) => [
+  mira([-1.3, 0, 0.4], { ride: { equip: 0, seat: 'a' }, actions: [hold('seesawRide', period, { repeats: 8 })] }),
+  mango([1.3, 0, 0.4], { ride: { equip: 0, seat: 'b', lift: 0.02, back: -0.1 }, actions: [hold('dogSit', 30)] }),
+];
+const onSwing = (period = 2.6) => [
+  mira([-0.62, 0, 0], { ride: { equip: 0, seat: 'a' }, actions: [hold('swingRide', period, { repeats: 8 })] }),
+  mango([0.62, 0, 0], { ride: { equip: 0, seat: 'b', lift: 0.02 }, actions: [hold('dogSit', 30)] }),
+];
+const onMerry = () => [
+  mira([0.8, 0, 0.3], { ride: { equip: 0, seat: 'a' }, actions: [hold('merryRide', 4, { repeats: 4 })] }),
+  mango([-0.8, 0, 0.3], { ride: { equip: 0, seat: 'b', lift: 0.02, back: 0.3 }, actions: [hold('dogSit', 30)] }),
+];
+const slideRun = (climbAt = 0) => mira([0, 0, -1.4], { ride: { equip: 0, seat: 'top', climb: { at: climbAt, dur: 1.8 }, at: climbAt + 2.3, dur: 1.4, off_after: 0.4 },
+  actions: [A('climb', climbAt, { seconds: 0.6, repeats: 3 }), A('slideRide', climbAt + 1.55, { seconds: 2.9 }), A('cheer', climbAt + 4.9)] });
+// standing marks, centre stage (two-shots)
+const M0 = [-0.42, 0, 1.3], D0 = [0.6, 0, 1.6]; // an arm's length apart: gestures never reach into each other
 
-const day = { preset: 'day' }, morning = { preset: 'morning' }, sunset = { preset: 'sunset' }, night = { preset: 'night' };
 const shot = (title, lf, lt, setting, actors, camera, lighting = day, so = null, eo = null) => ({ title, line_from: lf, line_to: lt, setting, actors, camera, lighting, start_override: so, end_override: eo });
 
 const shots = [
-  // ===== Intro: the playground =====
-  shot('Intro · crane down into the Rainbow Playground', 0, 0, PG(), [
-    mira([-5.2, 0, 3.4], { motion: { type: 'path', to: [-2.4, 0, 2.6], start: 4.5 }, actions: [{ move: 'wave', at: 9.2 }] }),
-    mango([-6.0, 0, 3.8], { motion: { type: 'path', to: [-1.6, 0, 3.1], start: 4.8 }, actions: [{ move: 'excitedHop', at: 10.4 }] }),
-  ], { preset: 'crane', size: 'wide', transition: 'cut' }, morning, 0, st(0)),
+  // ===== Intro: one establishing shot of the whole playground =====
+  shot('Intro · crane down into the Rainbow Playground', 0, 0, pg(...ALL), [
+    mira([-3.6, 0, 2.8], { motion: { type: 'path', to: [-1.2, 0, 2.6], start: 4.0 }, actions: [A('wave', 9.0)] }),
+    mango([-4.2, 0, 3.1], { motion: { type: 'path', to: [-0.4, 0, 2.9], start: 4.3 }, actions: [A('excitedHop', 10.0)] }),
+  ], { preset: 'crane', size: 'wide', transition: 'cut', dof: 'off' }, morning, 0, st(0)),
+
   // ===== Verse 1 =====
-  shot('Walking slowly past the flower beds', 0, 1, PG(), [
-    mira([-2.4, 0, 2.6], { motion: { type: 'path', to: [-0.4, 0, 2.8] }, actions: [{ move: 'look', at: 3.2 }] }),
-    mango([-1.6, 0, 3.1], { motion: { type: 'path', to: [0.4, 0, 3.3] }, actions: [{ move: 'sniff', at: 2.6 }] }),
-  ], { preset: 'follow', size: 'full', target: 0, yaw: 0.55, height: -0.6 }, morning, st(0), null),
-  shot('Now we are running fast! A chase round the seesaw', 2, 2, PG(), [
-    mira([0.1, 0, -1.2], { motion: { type: 'circle', center: [-0.5, 0, 0.9], turns: 0.5 } }),
-    mango([1.1, 0, -1.0], { motion: { type: 'circle', center: [-0.5, 0, 0.9], turns: 0.5 }, look_at: undefined }),
-  ], { preset: 'group', size: 'wide', height: 0.6, yaw: 0.2, transition: 'cut' }, day, null, st(3)),
-  shot('Zooming round on the merry-go-round', 3, 3, PG({}), [
-    mira(PGP.mgr, ride(3, 'a', { lift: 0.05 }), ), mango(PGP.mgr, ride(3, 'b', { lift: 0.02 })),
-  ].map((a, i) => ({ ...a, actions: [i === 0 ? hold('merryRide', 4, { repeats: 2 }) : hold('dogSit', 6)] })),
-  { preset: 'orbit', size: 'full', amount: 0.6, height: 0.3, target: 0, transition: 'cut' }, day, st(3), null),
+  shot('Walking slowly… past the flowers (follow, child\'s eye level)', 0, 1, pg(), [
+    mira([-2.2, 0, 1.6], { motion: { type: 'path', to: [0.6, 0, 1.4] }, actions: [A('look', 3.0)] }),
+    mango([-1.5, 0, 0.75], { motion: { type: 'path', to: [1.4, 0, 0.65] }, actions: [A('sniff', 2.4)] }), // the far side: never between the camera and Mira
+  ], { preset: 'follow', size: 'full', target: 0, yaw: 0.5, height: -0.3 }, morning, st(0), null),
+  shot('Now we\'re running, fast, fast, fast! (pan)', 2, 2, pg(), [
+    mira([-2.6, 0, 1.4], { motion: { type: 'path', to: [2.4, 0, 1.2] } }),
+    mango([-2.0, 0, 0.7], { motion: { type: 'path', to: [2.9, 0, 0.5] }, look_at: undefined }), // just ahead: Mira chases him
+  ], { preset: 'follow', size: 'full', target: 0, yaw: 0.8, height: -0.2 }, day),
+  shot('Round the garden, zooming past! (merry-go-round, orbit)', 3, 3, pg(MERRY), onMerry(),
+    { preset: 'orbit', size: 'full', amount: 0.55, height: 0.1, target: 0 }, day),
+
   // ===== Chorus 1 =====
-  shot('Seesaw: slow and fast, up and down (low hero angle)', 4, 5, PG(), [
-    mira(PGP.seesawA, { ...ride(0, 'a'), actions: [hold('seesawRide', 2.4, { repeats: 3 })] }),
-    mango(PGP.seesawB, { ...ride(0, 'b', { lift: 0.02 }), actions: [hold('dogSit', 8)] }),
-  ], { preset: 'group', size: 'full', height: -1.4, yaw: 0.15 }, day),
-  shot('Close-up: yes and no, hello, goodbye', 6, 6, PG(), [
-    mira([-0.6, 0, 2.4], { actions: [{ move: 'nod', at: 0.1, seconds: 1.0 }, { move: 'shake', at: 1.2, seconds: 1.0 }, { move: 'wave', at: 2.4, seconds: 2.0 }] }),
-    mango([0.5, 0, 2.6]),
-  ], { preset: 'closeup', size: 'closeup', target: 0, yaw: 0.25 }, day, null, st(7)),
-  shot('Come on, copy! Mango copies Mira', 7, 7, PG(), [
-    mira([-0.6, 0, 2.4], { actions: [{ move: 'clap', at: 0.2 }, { move: 'cheer', at: 2.6 }] }),
-    mango([0.5, 0, 2.6], { actions: [{ move: 'nod', at: 0.6 }, { move: 'pawRaise', at: 2.2 }, { move: 'excitedHop', at: 3.6 }] }),
-  ], { preset: 'group', size: 'medium', yaw: -0.4 }, day, st(7), null),
+  shot('Chorus 1 · seesaw: slow and fast, up and down (side-on)', 4, 4, pg(SEESAW), onSeesaw(),
+    { preset: 'group', size: 'full', yaw: 0, height: -0.3 }, day),
+  shot('Chorus 1 · swing: high and low (three-quarter)', 5, 5, pg(SWING), onSwing(),
+    { preset: 'group', size: 'full', yaw: 0.65, height: -0.1 }, day),
+  shot('Chorus 1 · close-up: yes and no, hello, goodbye', 6, 6, pg(), [
+    mira(M0, { actions: [A('nod', 0.05, { seconds: 0.8 }), A('shake', 0.9, { seconds: 0.8 }), A('wave', 1.75, { seconds: 1.2 })] }), mango(D0),
+  ], { preset: 'closeup', size: 'closeup', target: 0, yaw: 0.15 }, day),
+  shot('Chorus 1 · come on, copy, give it a try! (to the viewer)', 7, 7, pg(), [
+    mira(M0, { actions: [A('clap', 0.2), A('greet', 2.0), A('dance', 3.8, { seconds: 3.2 })] }),
+    mango(D0, { actions: [A('pawRaise', 1.0), A('excitedHop', 2.6), A('spin', 4.6)] }),
+  ], { preset: 'dolly-in', size: 'full', yaw: 0.1, height: -0.2 }, day, st(7), st(8)),
+
   // ===== Verse 2 =====
-  shot('Mira jumps up, up, up! (low angle, beach ball bouncing)', 8, 8, PG(), [
-    mira([-0.4, 0, 2.2], { actions: [{ move: 'jump', at: 0.1, repeats: 3, seconds: 3.3, height: 0.35 }] }),
-    mango([0.9, 0, 2.6], { actions: [{ move: 'jumpCatch', at: 0.6 }, { move: 'excitedHop', at: 2.2 }] }),
-    prop(CARD.ball, [0.4, 0, 1.6], { scale: 0.45, motion: { type: 'bounce', to: [0.4, 0, 1.6], hops: 4, height: 0.7 } }),
-  ], { preset: 'tilt-up', size: 'full', height: -1.6, target: 0 }, day, null, st(9)),
-  shot('Close-up: Mango wags, a happy pup', 9, 9, PG(), [
-    mira([-0.4, 0, 2.2]), mango([0.9, 0, 2.6], { actions: [{ move: 'tailWag', at: 0.1, seconds: 2.4 }, { move: 'excitedHop', at: 2.6 }] }),
-  ], { preset: 'closeup', size: 'closeup', target: 1, yaw: -0.3 }, day, st(9), null),
-  shot('Bow down to the ground (Mango does a play-bow)', 10, 10, PG(), [
-    mira([-0.6, 0, 2.3], { actions: [{ move: 'bow', at: 0.2, seconds: 2.0 }] }),
-    mango([0.6, 0, 2.6], { actions: [{ move: 'playBow', at: 0.4 }] }),
-  ], { preset: 'group', size: 'full', yaw: 0.7, height: 0.2 }, day, null, st(11)),
-  shot('Up float balloons, pink and round!', 11, 11, pgEq({ more: [{ type: 'balloons', pos: [0.1, 0, 1.9], lift: 1.4, rise: 3.2 }] }), [
-    mira([-0.6, 0, 2.3], { actions: [{ move: 'lookUp', at: 0.2, seconds: 1.6 }, { move: 'jump', at: 1.9, seconds: 1.2 }, { move: 'cheer', at: 3.3 }] }),
-    mango([0.8, 0, 2.7], { actions: [{ move: 'headTilt', at: 0.6 }] }),
-  ], { preset: 'tilt-up', size: 'full', height: -0.8, yaw: -0.2 }, day, st(11), null),
-  // ===== Chorus 2: swings =====
-  shot('Swinging high and low (side-on)', 12, 13, PG(), [
-    mira(PGP.swingA, { ...ride(1, 'a'), actions: [hold('swingRide', 2.6, { repeats: 3 })] }),
-    mango(PGP.swingB, { ...ride(1, 'b', { lift: 0.02 }), actions: [hold('dogSit', 8)] }),
-  ], { preset: 'group', size: 'full', yaw: 1.05, height: 0.2, transition: 'dissolve' }, day),
-  shot('Wheee! Climb up and down the slide', 14, 15, PG(), [
-    mira(PGP.slideTop, { ...ride(2, 'top', { climb: { at: 0, dur: 1.8 }, at: 2.4, dur: 1.4 }), actions: [{ move: 'climb', at: 0, seconds: 0.6, repeats: 3 }, { move: 'slideRide', at: 1.75, seconds: 8, hold: true }] }),
-    mango([4.7, 0, 0.7], { actions: [{ move: 'excitedHop', at: 2.6 }] }),
-  ], { preset: 'wide', size: 'wide', yaw: -1.25, height: 0.6 }, day, null, st(15) + 2.4),
-  shot('Come on, copy, give it a try! (at the bottom of the slide)', 15, 15, PG(), [
-    mira([3.0, 0, 0.9], { actions: [{ move: 'clap', at: 0.2 }, { move: 'cheer', at: 2.4 }, { move: 'wave', at: 4.6 }] }),
-    mango([3.9, 0, 1.3], { actions: [{ move: 'pawRaise', at: 0.6 }, { move: 'spin', at: 2.8 }] }),
-  ], { preset: 'dolly-in', size: 'full', yaw: -0.35, target: 0 }, day, st(15) + 2.4, null),
-  // ===== Verse 2 again: ball play from a reverse angle =====
-  shot('Mira jumps! (reverse angle, ball game)', 16, 16, PG(), [
-    mira([-0.9, 0, -0.8], { rot: [0, 2.74, 0], actions: [{ move: 'hop', at: 0.1, repeats: 2, seconds: 0.5 }, { move: 'kickBall', at: 1.2 }, { move: 'jump', at: 2.8 }] }),
-    mango([0.6, 0, -1.7], { rot: [0, 2.6, 0], look_at: undefined, actions: [{ move: 'excitedHop', at: 0.4 }, { move: 'jumpCatch', at: 2.3 }] }),
-    prop(CARD.ball, [-0.75, 0, -1.2], { scale: 0.45, motion: { type: 'bounce', to: [0.45, 0, -1.95], hops: 2, height: 0.45, start: 1.75 } }),
-  ], { preset: 'group', size: 'full', yaw: 2.74, height: -0.3 }, day, null, st(17)),
-  shot('Mango chases the beach ball', 17, 17, PG(), [
-    mira([-0.9, 0, -0.8], { rot: [0, 2.74, 0], actions: [{ move: 'clap', at: 0.3 }, { move: 'twirl', at: 2.0 }] }),
-    mango([0.4, 0, -1.6], { motion: { type: 'circle', center: [-0.3, 0, -1.3], turns: 2 } }),
-    prop(CARD.ball, [-0.3, 0, -1.3], { scale: 0.45, motion: { type: 'bounce', to: [-0.3, 0, -1.3], hops: 3, height: 0.35 } }),
-  ], { preset: 'group', size: 'full', yaw: 2.8, height: 0.4 }, day, st(17), null),
-  // ===== Candy Garden =====
-  shot('Candy Garden · crane down: bow to the lollipops', 18, 18, CG(), [
-    mira([-3.2, 0, 3.0], { motion: { type: 'path', to: [-0.4, 0, 2.2] }, actions: [{ move: 'skip', at: 0, seconds: 0.6, repeats: 4 }, { move: 'bow', at: 3.1, seconds: 1.6 }] }),
-    mango([-3.9, 0, 3.4], { motion: { type: 'path', to: [0.6, 0, 2.5] }, actions: [{ move: 'playBow', at: 3.3 }] }),
-    prop(CARD.cart, [2.8, 0, 1.2], { scale: 1.3, rot: [0, -0.6, 0] }),
-    prop(CARD.pinwheel, [-3.2, 0, -2.6], { scale: 1.6, motion: { type: 'sway', amount: 0.05, speed: 0.6 } }),
-    prop(CARD.pinwheel, [3.6, 0, -3.2], { scale: 1.4, motion: { type: 'sway', amount: 0.05, speed: 0.7 } }),
-  ], { preset: 'crane', size: 'wide', transition: 'iris' }, day, null, st(19)),
-  shot('Up float the pink balloons between the lollipop trees', 19, 19, CG({ more: [{ type: 'balloons', pos: [0.1, 0, 1.6], lift: 1.5, rise: 3.4 }] }), [
-    mira([-0.4, 0, 2.2], { actions: [{ move: 'lookUp', at: 0.4, seconds: 3 }, { move: 'wave', at: 3.8 }] }),
-    mango([0.6, 0, 2.5], { actions: [{ move: 'excitedHop', at: 1.0 }] }),
-    prop(CARD.cart, [2.8, 0, 1.2], { scale: 1.3, rot: [0, -0.6, 0] }),
-  ], { preset: 'tilt-up', size: 'full', height: -1.0, yaw: 0.3 }, day, st(19), null),
-  shot('Candy seesaw: up and down (orbit, low)', 20, 21, CG(), [
-    mira(CGP.seesawA, { ...ride(0, 'a'), actions: [hold('seesawRide', 2.3, { repeats: 3 })] }),
-    mango(CGP.seesawB, { ...ride(0, 'b', { lift: 0.02 }), actions: [hold('dogSit', 8)] }),
-    prop(CARD.pinwheel, [-3.2, 0, -2.6], { scale: 1.6, motion: { type: 'sway', amount: 0.05, speed: 0.6 } }),
-  ], { preset: 'orbit', size: 'full', amount: 0.5, height: -0.9 }, day),
-  shot('Hello to the ice-cream cart!', 22, 22, CG(), [
-    mira([1.6, 0, 1.8], { rot: [0, 0.5, 0], actions: [{ move: 'wave', at: 0.3, seconds: 2.2 }, { move: 'cheer', at: 2.8 }] }),
-    mango([0.8, 0, 2.3], { actions: [{ move: 'pawRaise', at: 1.0 }] }),
-    prop(CARD.cart, [2.8, 0, 1.2], { scale: 1.3, rot: [0, -0.6, 0] }),
-  ], { preset: 'group', size: 'medium', yaw: -0.45 }, day, null, st(23)),
-  shot('Come on, copy! Dance by the ice-cream cart', 23, 23, CG(), [
-    mira([1.4, 0, 1.9], { actions: [{ move: 'twirl', at: 0.2 }, { move: 'dance', at: 2.4, seconds: 3.0 }] }),
-    mango([0.5, 0, 2.3], { actions: [{ move: 'rollOver', at: 0.6 }, { move: 'excitedHop', at: 3.0 }] }),
-    prop(CARD.cart, [2.8, 0, 1.2], { scale: 1.3, rot: [0, -0.6, 0] }),
-  ], { preset: 'dolly-in', size: 'full', yaw: -0.2 }, day, st(23), null),
+  shot('Mira jumps up, up, up, up! (low angle)', 8, 8, pg(), [
+    mira(M0, { actions: [A('jump', 0.1, { repeats: 4, seconds: 2.5, height: 0.35 })] }), mango(D0, { actions: [A('excitedHop', 1.4)] }),
+  ], { preset: 'tilt-up', size: 'full', height: -1.2, target: 0, yaw: -0.15 }, day),
+  shot('Mango wags, a happy pup! (close-up)', 9, 9, pg(), [
+    mira(M0), mango(D0, { actions: [A('tailWag', 0.05, { seconds: 1.9 })] }),
+  ], { preset: 'closeup', size: 'closeup', target: 1, yaw: -0.25 }, day),
+  shot('Now bow down, down to the ground (profile two-shot)', 10, 10, pg(), [
+    mira([-0.55, 0, 1.4], { rot: [0, 1.57, 0], actions: [A('bow', 0.2, { seconds: 2.0 })] }),
+    mango([0.55, 0, 1.4], { rot: [0, -1.57, 0], look_at: undefined, actions: [A('playBow', 0.4)] }),
+  ], { preset: 'group', size: 'full', yaw: 0.25, height: -0.2 }, day),
+  shot('Up float balloons, pink and round! (tilt up)', 11, 11, pg({ type: 'balloons', pos: [0.15, 0, 1.75], scale: 0.7, lift: 1.4, rise: 2.4 }), [
+    mira([-0.55, 0, 1.4], { actions: [A('lookUp', 0.6, { seconds: 1.6 }), A('cheer', 2.2)] }), mango([0.75, 0, 1.6], { actions: [A('headTilt', 0.8)] }),
+  ], { preset: 'tilt-up', size: 'full', height: -0.6, yaw: 0.1 }, day),
+
+  // ===== Chorus 2 =====
+  shot('Chorus 2 · seesaw: up and down (low hero angle)', 12, 12, pg(SEESAW), onSeesaw(),
+    { preset: 'group', size: 'full', yaw: 0.55, height: -0.9 }, day),
+  shot('Chorus 2 · swing: high and low (towards us)', 13, 13, pg(SWING), onSwing(),
+    { preset: 'group', size: 'full', yaw: 0.2, height: -0.2 }, day),
+  shot('Chorus 2 · yes and no, hello, goodbye (two-shot)', 14, 14, pg(), [
+    mira(M0, { actions: [A('nod', 0.05, { seconds: 0.8 }), A('shake', 0.9, { seconds: 0.8 }), A('wave', 1.75, { seconds: 1.4 })] }),
+    mango(D0, { actions: [A('nod', 0.3, { seconds: 0.8 }), A('pawRaise', 1.9)] }),
+  ], { preset: 'group', size: 'medium', yaw: -0.2 }, day),
+  shot('Chorus 2 · come on, give it a try! Up the ladder and down the slide', 15, 15, pg(SLIDE), [
+    slideRun(0.2), mango([0.9, 0, 2.4], { actions: [A('excitedHop', 4.3), A('tailWag', 5.8)] }),
+  ], { preset: 'group', size: 'wide', yaw: 1.15, height: 0.1 }, day, st(15), st(16)),
+
+  // ===== Verse 2 again: the beach ball =====
+  shot('Mira jumps up, up! The ball bounces too', 16, 16, pg(), [
+    mira(M0, { actions: [A('jump', 0.1, { repeats: 3, seconds: 2.2, height: 0.3 })] }), mango([0.9, 0, 1.7], { actions: [A('excitedHop', 1.0)] }),
+    ball([0.25, 0, 1.15], { motion: { type: 'bounce', to: [0.25, 0, 1.15], hops: 3, height: 0.6 } }),
+  ], { preset: 'group', size: 'full', yaw: -0.45, height: -0.5 }, day),
+  shot('Mango wags, a happy pup! He catches the ball', 17, 17, pg(), [
+    mira([-0.7, 0, 1.2], { actions: [A('kickBall', 0.1)] }), mango([0.8, 0, 1.6], { actions: [A('jumpCatch', 0.6), A('tailWag', 1.3, { seconds: 0.8 })] }),
+    ball([-0.35, 0, 1.7], { motion: { type: 'bounce', to: [0.55, 0, 2.05], hops: 1, height: 0.5, start: 0.25, duration: 0.7 } }),
+  ], { preset: 'group', size: 'full', yaw: 0.4, height: -0.3 }, day),
+  shot('Now bow down, down to the ground (face to face)', 18, 18, pg(), [
+    mira([-0.5, 0, 1.4], { rot: [0, 1.57, 0], actions: [A('bow', 0.15, { seconds: 2.0 })] }),
+    mango([0.5, 0, 1.4], { rot: [0, -1.57, 0], look_at: undefined, actions: [A('playBow', 0.3)] }),
+  ], { preset: 'group', size: 'medium', yaw: 0.05, height: -0.2 }, day),
+  shot('Up float balloons… up and away! (crane up)', 19, 19, pg({ type: 'balloons', pos: [0.1, 0, 1.6], scale: 0.7, lift: 2.0, rise: 3.6 }), [
+    mira([-0.55, 0, 1.4], { actions: [A('lookUp', 0.7, { seconds: 3.4 }), A('wave', 4.3)] }), mango([0.75, 0, 1.6], { actions: [A('excitedHop', 1.6)] }),
+  ], { preset: 'tilt-up', size: 'full', height: -0.6, yaw: -0.1 }, day, st(19), st(20)),
+
+  // ===== Chorus 3: the Candy Garden =====
+  shot('Chorus 3 · Candy Garden · seesaw (crane down)', 20, 20, cg(SEESAW), onSeesaw(),
+    { preset: 'crane', size: 'full', transition: 'iris', yaw: 0.3 }, day),
+  shot('Chorus 3 · merry-go-round: spin around! (orbit)', 21, 21, cg(MERRY), onMerry(),
+    { preset: 'orbit', size: 'full', amount: 0.6, height: -0.2, target: 0 }, day),
+  shot('Chorus 3 · close-up: yes and no, hello, goodbye (candy bokeh)', 22, 22, cg(), [
+    mira(M0, { actions: [A('nod', 0.05, { seconds: 0.8 }), A('shake', 0.9, { seconds: 0.8 }), A('wave', 1.75, { seconds: 1.3, hand: 'left' })] }), mango(D0),
+  ], { preset: 'closeup', size: 'closeup', target: 0, yaw: -0.2, dof: '1.6' }, day),
+  shot('Chorus 3 · come on, copy! Twirl, and Mango spins', 23, 23, cg(), [
+    mira(M0, { actions: [A('twirl', 0.2), A('clap', 2.2), A('cheer', 3.6)] }), mango(D0, { actions: [A('spin', 0.6), A('excitedHop', 2.6)] }),
+  ], { preset: 'dolly-in', size: 'full', yaw: 0.25, height: -0.3 }, day, st(23), st(24)),
+
   // ===== Verse 3: the kite =====
-  shot('Red kite flying high, so high (low angle, tilt up)', 24, 25, CG({ more: [{ type: 'kite', pos: [0.7, 2.05, -0.8], anchor: [-1.1, -1.05, 3.0], size: 1.4 }] }), [
-    mira([-0.4, 0, 2.2], { actions: [{ move: 'lookUp', at: 0.2, seconds: 4.6 }] }),
-    mango([0.6, 0, 2.6], { actions: [{ move: 'headTilt', at: 1.2 }] }),
+  shot('Red kite flying high, so high! (low angle)', 24, 24, cg({ type: 'kite', pos: [0.7, 2.05, -0.8], anchor: [-1.1, -1.05, 3.0], size: 1.4 }), [
+    mira([-0.4, 0, 2.2], { actions: [A('lookUp', 0.2, { seconds: 2.4 })] }), mango([0.6, 0, 2.6], { actions: [A('headTilt', 1.2)] }),
   ], { preset: 'tilt-up', size: 'full', distance: 1.35, height: -0.7, yaw: 0.1 }, day),
-  shot('Swooping low… Mango sniffs low with his nose', 26, 27, CG({ more: [{ type: 'kite', pos: [0.7, 2.05, -0.8], anchor: [-1.1, -1.05, 3.0], size: 1.4, swoop: { at: 0.3, dur: 2.8, drop: 1.0 } }] }), [
-    mira([-0.4, 0, 2.2], { actions: [{ move: 'lookUp', at: 0.3, seconds: 2.6 }, { move: 'cheer', at: 3.2 }] }),
-    mango([0.6, 0, 2.6], { actions: [{ move: 'sniff', at: 2.4, seconds: 2.2 }] }),
-  ], { preset: 'group', size: 'wide', yaw: 0.35, height: 0.6 }, day),
-  // ===== Chorus 4 =====
-  shot('Merry-go-round in the candy garden: spin around!', 28, 29, CG(), [
-    mira(CGP.mgr, { ...ride(1, 'a', { lift: 0.05 }), actions: [hold('merryRide', 4, { repeats: 2 })] }),
-    mango(CGP.mgr, { ...ride(1, 'c', { lift: 0.02 }), actions: [hold('dogSit', 8)] }),
-  ], { preset: 'orbit', size: 'full', amount: 0.7, height: 0.6, target: 0 }, day),
-  shot('Pinwheel party: dance and spin', 30, 31, CG(), [
-    mira([-1.2, 0, 1.4], { actions: [{ move: 'twirl', at: 0.2, seconds: 2.2 }, { move: 'dance', at: 2.6, seconds: 2.2 }] }),
-    mango([-0.2, 0, 1.8], { motion: { type: 'circle', center: [-1.2, 0, 1.4], turns: 1.2 } }),
-    prop(CARD.pinwheel, [-2.4, 0, 0.2], { scale: 1.8, motion: { type: 'sway', amount: 0.06, speed: 0.9 } }),
-    prop(CARD.pinwheel, [0.9, 0, 0.4], { scale: 1.5, motion: { type: 'sway', amount: 0.06, speed: 1.1 } }),
-  ], { preset: 'dolly-in', size: 'full', yaw: 0.2, height: -0.3 }, day),
-  // ===== Verse 4 =====
-  shot('Yes, yes, yes / No, no, no (two-shot)', 32, 33, CG(), [
-    mira([-0.5, 0, 2.0], { actions: [{ move: 'nod', at: 0.2, seconds: 2.0 }, { move: 'shake', at: 2.5, seconds: 2.0 }] }),
-    mango([0.5, 0, 2.3], { actions: [{ move: 'nod', at: 0.5, seconds: 1.8 }, { move: 'shake', at: 2.7, seconds: 1.8 }] }),
-  ], { preset: 'group', size: 'medium', yaw: 0.2 }, day),
-  // ===== Mushroom Glade at sunset =====
-  shot('Glade at sunset · wave hello, wave goodbye (crane, hot-air balloon)', 34, 35, GL(), [
-    mira([-0.4, 0, 2.0], { actions: [{ move: 'wave', at: 1.6, seconds: 2.2 }, { move: 'wave', at: 4.4, seconds: 2.2, hand: 'left' }] }),
-    mango([0.6, 0, 2.3], { actions: [{ move: 'pawRaise', at: 2.2 }, { move: 'tailWag', at: 4.6 }] }),
-    prop(CARD.balloon, [-3.5, 6.5, -6], { scale: 2.4, motion: { type: 'drift', dx: 3, bob: 0.3 } }),
-  ], { preset: 'crane', size: 'full', transition: 'iris' }, sunset),
-  shot('Sunset swings (side-on)', 36, 37, GL(), [
-    mira(GLP.swingA, { ...ride(0, 'a'), actions: [hold('swingRide', 2.8, { repeats: 2 })] }),
-    mango(GLP.swingB, { ...ride(0, 'b', { lift: 0.02 }), actions: [hold('dogSit', 8)] }),
-  ], { preset: 'group', size: 'full', yaw: 0.45, height: 0.4 }, sunset),
-  shot('Close-up in the golden light: hello, goodbye', 38, 39, GL(), [
-    mira([-0.3, 0, 2.4], { actions: [{ move: 'wave', at: 0.4, seconds: 2.0 }, { move: 'nod', at: 3.2 }] }),
-    mango([0.6, 0, 2.7]),
-  ], { preset: 'closeup', size: 'closeup', target: 0, yaw: -0.3 }, sunset),
-  shot('Instrumental · dance party under the mushrooms (orbit)', 39, 39, GL(), [
-    mira([-0.6, 0, 1.6], { actions: [{ move: 'dance', at: 0.3, seconds: 3.0 }, { move: 'twirl', at: 3.6 }, { move: 'cheer', at: 6.2 }] }),
-    mango([0.6, 0, 1.9], { actions: [{ move: 'rollOver', at: 0.8 }, { move: 'jumpCatch', at: 3.4 }, { move: 'playBow', at: 5.8 }] }),
-    prop(CARD.ball, [0, 0, 2.6], { scale: 0.4, motion: { type: 'bounce', to: [0, 0, 2.6], hops: 8, height: 0.6 } }),
-  ], { preset: 'orbit', size: 'full', amount: 0.8, height: 0.2 }, sunset, en(39), null),
-  // ===== Slow choruses (dusk) =====
-  shot('Slow chorus · gentle swing at dusk (push in)', 40, 41, GL({ 0: { period: 3.4, amplitude: 16 } }), [
-    mira(GLP.swingA, { ...ride(0, 'a'), actions: [hold('swingRide', 3.4, { repeats: 3 })] }),
-    mango(GLP.swingB, { ...ride(0, 'b', { lift: 0.02 }), actions: [hold('dogSit', 12)] }),
-  ], { preset: 'dolly-in', size: 'wide', yaw: 0.35, transition: 'dissolve' }, sunset),
-  shot('Slow chorus · a soft seesaw goodbye', 42, 43, GL(), [
-    mira(GLP.seesawA, { ...ride(1, 'a'), actions: [hold('seesawRide', 3.4, { repeats: 4 })] }),
-    mango(GLP.seesawB, { ...ride(1, 'b', { lift: 0.02 }), actions: [hold('dogSit', 12)] }),
-  ], { preset: 'dolly-in', size: 'full', height: -1.0, yaw: -0.25 }, sunset),
-  shot('Instrumental · a walk through the glade', 43, 43, GL(), [
-    mira([-3.0, 0, 2.6], { motion: { type: 'path', to: [0.6, 0, 1.8] }, actions: [{ move: 'skip', at: 0.2, seconds: 0.62, repeats: 9 }, { move: 'twirl', at: 6.0 }] }),
-    mango([-3.8, 0, 3.0], { motion: { type: 'path', to: [1.4, 0, 2.2] } }),
-    prop(CARD.balloon, [-2.5, 7, -7], { scale: 2.4, motion: { type: 'drift', dx: 4, bob: 0.3 } }),
-  ], { preset: 'pan', size: 'wide', amount: 1.2, height: 0.2 }, sunset, st(43) > 154 ? null : 154.0, 161.0),
-  shot('Instrumental · ball game', 43, 43, GL(), [
-    mira([0.2, 0, 1.8], { actions: [{ move: 'kickBall', at: 0.6 }, { move: 'clap', at: 2.6 }, { move: 'cheer', at: 5.0 }] }),
-    mango([1.7, 0, 2.2], { actions: [{ move: 'jumpCatch', at: 1.5 }, { move: 'rollOver', at: 3.4 }] }),
-    prop(CARD.ball, [0.55, 0, 1.95], { scale: 0.4, motion: { type: 'bounce', to: [1.55, 0, 2.15], hops: 2, height: 0.9, start: 1.0 } }),
-  ], { preset: 'group', size: 'full', yaw: 0.45, height: -0.5 }, sunset, 161.0, null),
-  // ===== Finale: back to the playground at sunset =====
-  shot('Finale · merry-go-round, spin around! (low orbit)', 44, 45, pgEq({ 3: { speed: 0.6 } }), [
-    mira(PGP.mgr, { ...ride(3, 'a', { lift: 0.05 }), actions: [hold('merryRide', 4, { repeats: 2 })] }),
-    mango(PGP.mgr, { ...ride(3, 'b', { lift: 0.02 }), actions: [hold('dogSit', 9)] }),
-  ], { preset: 'orbit', size: 'full', amount: 0.9, height: -0.6, target: 0, transition: 'iris' }, sunset),
-  shot('Finale · wheee down the slide', 46, 46, PG(), [
-    mira(PGP.slideTop, { ...ride(2, 'top', { climb: { at: 0, dur: 1.8 }, at: 2.3, dur: 1.4 }), actions: [{ move: 'climb', at: 0, seconds: 0.6, repeats: 3 }, { move: 'slideRide', at: 1.75, seconds: 8, hold: true }] }),
-    mango([4.7, 0, 0.7], { actions: [{ move: 'excitedHop', at: 2.3 }] }),
-  ], { preset: 'wide', size: 'wide', yaw: -1.3, height: 0.7 }, sunset, null, st(47)),
-  shot('Finale · seesaw hero shot', 47, 47, PG(), [
-    mira(PGP.seesawA, { ...ride(0, 'a'), actions: [hold('seesawRide', 2.4, { repeats: 4 })] }),
-    mango(PGP.seesawB, { ...ride(0, 'b', { lift: 0.02 }), actions: [hold('dogSit', 12)] }),
-  ], { preset: 'group', size: 'full', height: -1.5, yaw: -0.2 }, sunset, st(47), en(47) + 0.3),
-  shot('Outro · thank you for playing! (push in)', 47, 47, PG(), [
-    mira([-0.4, 0, 2.4], { actions: [{ move: 'wave', at: 0.4, seconds: 2.4 }, { move: 'bow', at: 3.6 }, { move: 'twirl', at: 6.0 }, { move: 'jump', at: 8.6 }, { move: 'wave', at: 10.2, hand: 'left' }] }),
-    mango([0.6, 0, 2.7], { actions: [{ move: 'pawRaise', at: 1.0 }, { move: 'playBow', at: 3.9 }, { move: 'rollOver', at: 6.3 }, { move: 'jumpCatch', at: 8.8 }, { move: 'tailWag', at: 10.4 }] }),
-  ], { preset: 'dolly-in', size: 'full', yaw: 0.25 }, sunset, en(47) + 0.3, 199.0),
-  shot('End card · the playground at sunset, balloons float away', 47, 47, pgEq({ more: [{ type: 'balloons', pos: [0.2, 0, 2.0], lift: 2.0, rise: 7 }] }), [
-    mira([-0.4, 0, 2.4], { actions: [{ move: 'wave', at: 0.6, seconds: 3.0 }, { move: 'lookUp', at: 4.2, seconds: 3 }] }),
-    mango([0.6, 0, 2.7], { actions: [{ move: 'tailWag', at: 1.0, seconds: 3 }] }),
-  ], { preset: 'pan', size: 'extreme-wide', amount: 0.6, height: 0.6, yaw: 0.1 }, sunset, 199.0, null),
+  shot('Dancing in the big blue sky (the kite)', 25, 25, cg({ type: 'kite', pos: [0.7, 2.05, -0.8], anchor: [-1.1, -1.05, 3.0], size: 1.4 }), [
+    mira([-0.4, 0, 2.2], { actions: [A('lookUp', 0.1, { seconds: 2.1 })] }), mango([0.6, 0, 2.6]),
+  ], { preset: 'group', size: 'wide', height: -0.9, yaw: -0.3, dof: 'off' }, day),
+  shot('Swooping low, low, low it goes!', 26, 26, cg({ type: 'kite', pos: [0.7, 2.05, -0.8], anchor: [-1.1, -1.05, 3.0], size: 1.4, swoop: { at: 0.2, dur: 2.2, drop: 1.0 } }), [
+    mira([-0.4, 0, 2.2], { actions: [A('lookUp', 0.2, { seconds: 1.4 }), A('cheer', 1.7)] }), mango([0.6, 0, 2.6], { actions: [A('excitedHop', 1.2)] }),
+  ], { preset: 'group', size: 'wide', yaw: 0.35, height: 0.4 }, day),
+  shot('Mango sniffs low with his nose (close-up)', 27, 27, cg(), [
+    mira([-0.4, 0, 2.2]), mango([0.6, 0, 2.6], { actions: [A('sniff', 0.1, { seconds: 2.1 })] }),
+  ], { preset: 'closeup', size: 'closeup', target: 1, yaw: 0.3 }, day),
+
+  // ===== Chorus 4: Candy Garden =====
+  shot('Chorus 4 · seesaw: up and down (low, the other side)', 28, 28, cg(SEESAW), onSeesaw(),
+    { preset: 'group', size: 'full', yaw: -0.55, height: -0.8 }, day),
+  shot('Chorus 4 · swing: high and low (three-quarter, the other side)', 29, 29, cg(SWING), onSwing(),
+    { preset: 'group', size: 'full', yaw: -0.65, height: -0.1 }, day),
+  shot('Chorus 4 · yes and no, hello, goodbye (two-shot)', 30, 30, cg(), [
+    mira(M0, { actions: [A('nod', 0.05, { seconds: 0.8 }), A('shake', 0.9, { seconds: 0.8 }), A('wave', 1.75, { seconds: 1.3 })] }),
+    mango(D0, { actions: [A('nod', 0.3, { seconds: 0.8 }), A('pawRaise', 1.9)] }),
+  ], { preset: 'group', size: 'medium', yaw: 0.3 }, day),
+  shot('Chorus 4 · come on, copy! Hop, hop, hop', 31, 31, cg(), [
+    mira(M0, { actions: [A('hop', 0.2, { repeats: 3, seconds: 1.5 }), A('cheer', 1.9)] }), mango(D0, { actions: [A('excitedHop', 0.5), A('excitedHop', 1.4)] }),
+  ], { preset: 'group', size: 'full', yaw: -0.15, height: -0.4 }, day),
+
+  // ===== Verse 4: back home, golden sunset =====
+  shot('Yes, yes, yes, we nod our heads (sunset)', 32, 32, pg(), [
+    mira(M0, { actions: [A('nod', 0.1, { seconds: 2.1 })] }), mango(D0, { actions: [A('nod', 0.3, { seconds: 1.9 })] }),
+  ], { preset: 'group', size: 'medium', yaw: 0.25, transition: 'iris' }, sunset),
+  shot('No, no, no, we shake instead!', 33, 33, pg(), [
+    mira(M0, { actions: [A('shake', 0.1, { seconds: 2.2 })] }), mango(D0, { actions: [A('shake', 0.3, { seconds: 2.0 })] }),
+  ], { preset: 'group', size: 'medium', yaw: -0.35 }, sunset),
+  shot('Wave hello, the day was fun! (close-up)', 34, 34, pg(), [
+    mira(M0, { actions: [A('wave', 0.1, { seconds: 2.2 })] }), mango(D0),
+  ], { preset: 'closeup', size: 'closeup', target: 0, yaw: 0.1 }, sunset),
+  shot('Wave goodbye to the setting sun! (profile, sun behind)', 35, 35, pg(), [
+    mira([-0.4, 0, 1.4], { rot: [0, 0.7, 0], actions: [A('wave', 0.2, { seconds: 2.4 }), A('wave', 3.0, { seconds: 1.6, hand: 'left' })] }),
+    mango([0.35, 0, 1.0], { rot: [0, 0.7, 0], look_at: undefined, actions: [A('pawRaise', 0.6), A('tailWag', 2.8)] }),
+  ], { preset: 'dolly-in', size: 'full', yaw: 0.2, height: -0.3 }, sunset, st(35), st(36)),
+
+  // ===== Chorus 5: sunset =====
+  shot('Chorus 5 · seesaw at sunset (hero angle)', 36, 36, pg(SEESAW), onSeesaw(),
+    { preset: 'group', size: 'full', yaw: 0.35, height: -1.0 }, sunset),
+  shot('Chorus 5 · swing at sunset (three-quarter)', 37, 37, pg(SWING), onSwing(),
+    { preset: 'group', size: 'full', yaw: 0.55, height: -0.2 }, sunset),
+  shot('Chorus 5 · close-up: yes and no, hello, goodbye', 38, 38, pg(), [
+    mira(M0, { actions: [A('nod', 0.05, { seconds: 0.8 }), A('shake', 0.9, { seconds: 0.8 }), A('wave', 1.75, { seconds: 1.3 })] }), mango(D0),
+  ], { preset: 'closeup', size: 'closeup', target: 0, yaw: -0.15 }, sunset),
+  shot('Chorus 5 · come on, copy! Clap and cheer', 39, 39, pg(), [
+    mira(M0, { actions: [A('clap', 0.2), A('greet', 1.8), A('cheer', 3.6)] }), mango(D0, { actions: [A('pawRaise', 0.8), A('excitedHop', 3.2)] }),
+  ], { preset: 'dolly-in', size: 'full', yaw: 0.2, height: -0.2 }, sunset, st(39), en(39) + 0.6),
+  shot('Instrumental · ball game at sunset (orbit)', 39, 39, pg(), [
+    mira([-0.6, 0, 1.2], { actions: [A('kickBall', 0.5), A('dance', 2.6, { seconds: 3.0 }), A('twirl', 6.6)] }),
+    mango([0.9, 0, 1.6], { actions: [A('jumpCatch', 1.1), A('rollOver', 3.6), A('excitedHop', 6.8)] }),
+    ball([-0.3, 0, 1.7], { motion: { type: 'bounce', to: [0.45, 0, 2.35], hops: 2, height: 0.7, start: 0.65, duration: 1.0 } }),
+  ], { preset: 'orbit', size: 'full', amount: 0.6, height: -0.2 }, sunset, en(39) + 0.6, st(40)),
+
+  // ===== Slow chorus: gentle =====
+  shot('Slow chorus · a gentle swing (push in)', 40, 41, pg({ ...SWING, period: 3.4, amplitude: 18 }), onSwing(3.4),
+    { preset: 'dolly-in', size: 'wide', yaw: 0.4, height: -0.1, transition: 'dissolve' }, sunset),
+  shot('Slow chorus · close-up: hello, goodbye', 42, 42, pg(), [
+    mira(M0, { actions: [A('nod', 0.2, { seconds: 1.0 }), A('wave', 1.4, { seconds: 1.6 })] }), mango(D0),
+  ], { preset: 'closeup', size: 'closeup', target: 0, yaw: 0.2 }, sunset),
+  shot('Slow chorus · a soft seesaw (push in)', 43, 43, pg({ ...SEESAW, period: 3.4, amplitude: 10 }), onSeesaw(3.4),
+    { preset: 'dolly-in', size: 'full', yaw: -0.3, height: -0.6 }, sunset, st(43), en(43)),
+  shot('Instrumental · up the ladder, down the slide', 43, 43, pg(SLIDE), [
+    slideRun(0.3), mango([0.9, 0, 2.4], { actions: [A('excitedHop', 4.4), A('tailWag', 6.0)] }),
+  ], { preset: 'group', size: 'wide', yaw: -1.15, height: 0.1 }, sunset, en(43), 161.0),
+  shot('Instrumental · skipping together', 43, 43, pg(), [
+    mira([-2.3, 0, 1.6], { motion: { type: 'path', to: [1.2, 0, 1.2] }, actions: [A('skip', 0.1, { seconds: 0.62, repeats: 9 })] }),
+    mango([-1.7, 0, 0.5], { motion: { type: 'path', to: [2.4, 0, 0.2] } }), // a little ahead, on the far side
+  ], { preset: 'follow', size: 'full', target: 0, yaw: 0.6, height: -0.3 }, sunset, 161.0, st(44)),
+
+  // ===== Final chorus =====
+  shot('Final chorus · seesaw: up and down (front, low)', 44, 44, pg(SEESAW), onSeesaw(),
+    { preset: 'group', size: 'full', yaw: 0.15, height: -0.7, transition: 'dissolve' }, sunset),
+  shot('Final chorus · merry-go-round: spin around!', 45, 45, pg({ ...MERRY, speed: 0.5 }), onMerry(),
+    { preset: 'orbit', size: 'full', amount: 0.8, height: -0.3, target: 0 }, sunset),
+  shot('Final chorus · yes and no, hello, goodbye (two-shot)', 46, 46, pg(), [
+    mira(M0, { actions: [A('nod', 0.1, { seconds: 1.0 }), A('shake', 1.2, { seconds: 1.0 }), A('wave', 2.4, { seconds: 2.2 })] }),
+    mango(D0, { actions: [A('nod', 0.4, { seconds: 1.0 }), A('pawRaise', 2.6)] }),
+  ], { preset: 'group', size: 'medium', yaw: 0.25 }, sunset),
+  shot('Final chorus · come on, copy, give it a try! Jump together', 47, 47, pg(), [
+    mira(M0, { actions: [A('clap', 0.2), A('jump', 1.6, { repeats: 2, seconds: 1.6, height: 0.35 }), A('cheer', 3.6)] }),
+    mango(D0, { actions: [A('excitedHop', 1.7), A('excitedHop', 2.5), A('jumpCatch', 3.8)] }),
+  ], { preset: 'group', size: 'full', yaw: -0.2, height: -0.5 }, sunset, st(47), en(47) + 0.3),
+
+  // ===== Outro =====
+  shot('Outro · thank you for playing! (push in)', 47, 47, pg(), [
+    mira(M0, { actions: [A('wave', 0.4, { seconds: 2.4 }), A('bow', 3.6), A('twirl', 6.0), A('jump', 8.6), A('wave', 10.2, { hand: 'left' })] }),
+    mango(D0, { actions: [A('pawRaise', 1.0), A('playBow', 3.9), A('rollOver', 6.3), A('jumpCatch', 8.8), A('tailWag', 10.4)] }),
+  ], { preset: 'dolly-in', size: 'full', yaw: 0.2 }, sunset, en(47) + 0.3, 199.0),
+  shot('End card · balloons float away into the sunset', 47, 47, pg({ type: 'balloons', pos: [0.02, 0, 2.0], scale: 0.7, lift: 3.0, rise: 7 }), [
+    mira(M0, { actions: [A('wave', 0.6, { seconds: 3.0 }), A('lookUp', 4.2, { seconds: 3 })] }), mango(D0, { actions: [A('tailWag', 1.0, { seconds: 3 })] }),
+  ], { preset: 'tilt-up', size: 'wide', height: -0.3 }, sunset, 199.0, null),
 ];
 const res = await replaceShots(shots);
 console.log(`${res.length} shots written`);
