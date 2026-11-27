@@ -503,6 +503,8 @@ export function buildClip(rig, moveId, params, name) {
     const t = Math.min(total, f / fps); times[f] = t;
     const u = reps > 1 ? (t % one.seconds) / one.seconds || (t >= total ? 1 : 0) : t / one.seconds;
     const s = sampleKeys(one.keys, Math.min(1, u), rig);
+    // energy: the same move performed a little bigger or smaller (so repeated moves never look copy-pasted)
+    const en = Number(p.energy || 1); if (en !== 1) { for (const k of Object.keys(s.rot)) s.rot[k] = s.rot[k].map((x) => x * en); s.up *= en; s.fwd *= en; s.side *= en; }
     for (const [key, tr] of Object.entries(tracks)) {
       const v = s.rot[key] || (key === 'hips' ? s.rot.Hips : null) || [0, 0, 0];
       const r = rig.rest.get(tr.bone);

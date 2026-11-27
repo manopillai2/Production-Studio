@@ -1,0 +1,460 @@
+{
+ "bpm": 100,
+ "total": 212.7,
+ "form": [
+  {
+   "kind": "intro",
+   "start": 0,
+   "bars": 4
+  },
+  {
+   "kind": "verse",
+   "start": 9.6,
+   "bars": 2,
+   "line": 0
+  },
+  {
+   "kind": "verse",
+   "start": 14.4,
+   "bars": 2,
+   "line": 1
+  },
+  {
+   "kind": "verse",
+   "start": 19.2,
+   "bars": 2,
+   "line": 2
+  },
+  {
+   "kind": "verse",
+   "start": 24,
+   "bars": 2,
+   "line": 3
+  },
+  {
+   "kind": "chorus",
+   "start": 28.8,
+   "bars": 2,
+   "line": 4
+  },
+  {
+   "kind": "chorus",
+   "start": 33.6,
+   "bars": 2,
+   "line": 5
+  },
+  {
+   "kind": "chorus",
+   "start": 38.4,
+   "bars": 2,
+   "line": 6
+  },
+  {
+   "kind": "chorus",
+   "start": 43.2,
+   "bars": 2,
+   "line": 7
+  },
+  {
+   "kind": "verse",
+   "start": 48,
+   "bars": 2,
+   "line": 8
+  },
+  {
+   "kind": "verse",
+   "start": 52.8,
+   "bars": 2,
+   "line": 9
+  },
+  {
+   "kind": "verse",
+   "start": 57.6,
+   "bars": 2,
+   "line": 10
+  },
+  {
+   "kind": "verse",
+   "start": 62.4,
+   "bars": 2,
+   "line": 11
+  },
+  {
+   "kind": "chorus",
+   "start": 67.2,
+   "bars": 2,
+   "line": 12
+  },
+  {
+   "kind": "chorus",
+   "start": 72,
+   "bars": 2,
+   "line": 13
+  },
+  {
+   "kind": "chorus",
+   "start": 76.8,
+   "bars": 2,
+   "line": 14
+  },
+  {
+   "kind": "chorus",
+   "start": 81.6,
+   "bars": 2,
+   "line": 15
+  },
+  {
+   "kind": "break",
+   "start": 86.4,
+   "bars": 4
+  },
+  {
+   "kind": "verse",
+   "start": 96,
+   "bars": 2,
+   "line": 16
+  },
+  {
+   "kind": "verse",
+   "start": 100.8,
+   "bars": 2,
+   "line": 17
+  },
+  {
+   "kind": "verse",
+   "start": 105.6,
+   "bars": 2,
+   "line": 18
+  },
+  {
+   "kind": "verse",
+   "start": 110.4,
+   "bars": 2,
+   "line": 19
+  },
+  {
+   "kind": "chorus",
+   "start": 115.2,
+   "bars": 2,
+   "line": 20
+  },
+  {
+   "kind": "chorus",
+   "start": 120,
+   "bars": 2,
+   "line": 21
+  },
+  {
+   "kind": "chorus",
+   "start": 124.8,
+   "bars": 2,
+   "line": 22
+  },
+  {
+   "kind": "chorus",
+   "start": 129.6,
+   "bars": 2,
+   "line": 23
+  },
+  {
+   "kind": "verse",
+   "start": 134.4,
+   "bars": 2,
+   "line": 24
+  },
+  {
+   "kind": "verse",
+   "start": 139.2,
+   "bars": 2,
+   "line": 25
+  },
+  {
+   "kind": "verse",
+   "start": 144,
+   "bars": 2,
+   "line": 26
+  },
+  {
+   "kind": "verse",
+   "start": 148.8,
+   "bars": 2,
+   "line": 27
+  },
+  {
+   "kind": "chorus",
+   "start": 153.6,
+   "bars": 2,
+   "line": 28
+  },
+  {
+   "kind": "chorus",
+   "start": 158.4,
+   "bars": 2,
+   "line": 29
+  },
+  {
+   "kind": "chorus",
+   "start": 163.2,
+   "bars": 2,
+   "line": 30
+  },
+  {
+   "kind": "chorus",
+   "start": 168,
+   "bars": 2,
+   "line": 31
+  },
+  {
+   "kind": "break",
+   "start": 172.8,
+   "bars": 4
+  },
+  {
+   "kind": "chorus",
+   "start": 182.4,
+   "bars": 2,
+   "line": 32
+  },
+  {
+   "kind": "chorus",
+   "start": 187.2,
+   "bars": 2,
+   "line": 33
+  },
+  {
+   "kind": "chorus",
+   "start": 192,
+   "bars": 2,
+   "line": 34
+  },
+  {
+   "kind": "chorus",
+   "start": 196.8,
+   "bars": 2,
+   "line": 35
+  },
+  {
+   "kind": "outro",
+   "start": 201.6,
+   "bars": 4
+  }
+ ],
+ "lines": [
+  {
+   "i": 0,
+   "start": 9.6,
+   "end": 14.25,
+   "section": "verse"
+  },
+  {
+   "i": 1,
+   "start": 14.4,
+   "end": 19.05,
+   "section": "verse"
+  },
+  {
+   "i": 2,
+   "start": 19.2,
+   "end": 23.85,
+   "section": "verse"
+  },
+  {
+   "i": 3,
+   "start": 24,
+   "end": 28.65,
+   "section": "verse"
+  },
+  {
+   "i": 4,
+   "start": 28.8,
+   "end": 33.45,
+   "section": "chorus"
+  },
+  {
+   "i": 5,
+   "start": 33.6,
+   "end": 38.25,
+   "section": "chorus"
+  },
+  {
+   "i": 6,
+   "start": 38.4,
+   "end": 43.05,
+   "section": "chorus"
+  },
+  {
+   "i": 7,
+   "start": 43.2,
+   "end": 47.85,
+   "section": "chorus"
+  },
+  {
+   "i": 8,
+   "start": 48,
+   "end": 52.65,
+   "section": "verse"
+  },
+  {
+   "i": 9,
+   "start": 52.8,
+   "end": 57.45,
+   "section": "verse"
+  },
+  {
+   "i": 10,
+   "start": 57.6,
+   "end": 62.25,
+   "section": "verse"
+  },
+  {
+   "i": 11,
+   "start": 62.4,
+   "end": 67.05,
+   "section": "verse"
+  },
+  {
+   "i": 12,
+   "start": 67.2,
+   "end": 71.85,
+   "section": "chorus"
+  },
+  {
+   "i": 13,
+   "start": 72,
+   "end": 76.65,
+   "section": "chorus"
+  },
+  {
+   "i": 14,
+   "start": 76.8,
+   "end": 81.45,
+   "section": "chorus"
+  },
+  {
+   "i": 15,
+   "start": 81.6,
+   "end": 86.25,
+   "section": "chorus"
+  },
+  {
+   "i": 16,
+   "start": 96,
+   "end": 100.65,
+   "section": "verse"
+  },
+  {
+   "i": 17,
+   "start": 100.8,
+   "end": 105.45,
+   "section": "verse"
+  },
+  {
+   "i": 18,
+   "start": 105.6,
+   "end": 110.25,
+   "section": "verse"
+  },
+  {
+   "i": 19,
+   "start": 110.4,
+   "end": 115.05,
+   "section": "verse"
+  },
+  {
+   "i": 20,
+   "start": 115.2,
+   "end": 119.85,
+   "section": "chorus"
+  },
+  {
+   "i": 21,
+   "start": 120,
+   "end": 124.65,
+   "section": "chorus"
+  },
+  {
+   "i": 22,
+   "start": 124.8,
+   "end": 129.45,
+   "section": "chorus"
+  },
+  {
+   "i": 23,
+   "start": 129.6,
+   "end": 134.25,
+   "section": "chorus"
+  },
+  {
+   "i": 24,
+   "start": 134.4,
+   "end": 139.05,
+   "section": "verse"
+  },
+  {
+   "i": 25,
+   "start": 139.2,
+   "end": 143.85,
+   "section": "verse"
+  },
+  {
+   "i": 26,
+   "start": 144,
+   "end": 148.65,
+   "section": "verse"
+  },
+  {
+   "i": 27,
+   "start": 148.8,
+   "end": 153.45,
+   "section": "verse"
+  },
+  {
+   "i": 28,
+   "start": 153.6,
+   "end": 158.25,
+   "section": "chorus"
+  },
+  {
+   "i": 29,
+   "start": 158.4,
+   "end": 163.05,
+   "section": "chorus"
+  },
+  {
+   "i": 30,
+   "start": 163.2,
+   "end": 167.85,
+   "section": "chorus"
+  },
+  {
+   "i": 31,
+   "start": 168,
+   "end": 172.65,
+   "section": "chorus"
+  },
+  {
+   "i": 32,
+   "start": 182.4,
+   "end": 187.05,
+   "section": "chorus"
+  },
+  {
+   "i": 33,
+   "start": 187.2,
+   "end": 191.85,
+   "section": "chorus"
+  },
+  {
+   "i": 34,
+   "start": 192,
+   "end": 196.65,
+   "section": "chorus"
+  },
+  {
+   "i": 35,
+   "start": 196.8,
+   "end": 201.45,
+   "section": "chorus"
+  }
+ ]
+}

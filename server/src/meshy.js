@@ -18,7 +18,7 @@ import { MEDIA_DIR } from './paths.js';
 import { ProviderError, keyFor, isActive } from './providers.js';
 
 const BASE = process.env.MESHY_BASE_URL || 'https://api.meshy.ai'; // override only for local testing
-const PURPOSES = new Set(['generate', 'rig', 'animate', 'status', 'balance', 'motion-library']);
+const PURPOSES = new Set(['generate', 'preview', 'rig', 'animate', 'status', 'balance', 'motion-library']);
 const PERMIT = Symbol('meshy-permit');
 
 /** Create a permit. Call this ONLY from a route handling an explicit user action (or a status poll). */
@@ -57,7 +57,7 @@ export const balance = (p) => call(p, 'GET', '/openapi/v1/balance');
 export const motionLibrary = (p, search = '') => call(p, 'GET', `/openapi/v1/animations/library${search ? `?search=${encodeURIComponent(search)}` : ''}`);
 
 // ---------------- jobs ----------------
-const KINDS = { t3d: '/openapi/v2/text-to-3d', rig: '/openapi/v1/rigging', anim: '/openapi/v1/animations', retex: '/openapi/v1/retexture' };
+const KINDS = { t3d: '/openapi/v2/text-to-3d', i3d: '/openapi/v1/image-to-3d', t2i: '/openapi/v1/text-to-image', rig: '/openapi/v1/rigging', anim: '/openapi/v1/animations', retex: '/openapi/v1/retexture' };
 const ACTIVE = `status IN ('queued','running')`;
 const setJob = (id, f) => {
   const k = Object.keys(f);
@@ -67,7 +67,7 @@ const getJob = (id) => { const j = one('SELECT * FROM jobs WHERE id=?', id); ret
 
 /** Max Meshy jobs in flight at once, across all projects (Meshy's limit is per account; Pro = 10). */
 export const MAX_CONCURRENT = Math.max(1, Number(process.env.MESHY_MAX_CONCURRENT) || 10);
-const TARGET = { 'meshy-3d': 'card_id', 'meshy-item3d': 'item_id', 'meshy-retexture': 'item_id', 'meshy-rig': 'item_id', 'meshy-anim': 'item_id' };
+const TARGET = { 'meshy-3d': 'card_id', 'meshy-preview': 'card_id', 'meshy-item3d': 'item_id', 'meshy-retexture': 'item_id', 'meshy-rig': 'item_id', 'meshy-anim': 'item_id' };
 
 /** Throws 409 when the account is at its Meshy concurrency limit, or this same card/item already has a job running. */
 export function assertCapacity(type, params = {}) {
@@ -111,7 +111,7 @@ async function download(url, rel) {
   return rel;
 }
 
-let hooks = { onCardResult: null, onCardRig: null, onRigResult: null, onClipResult: null, onCardFailed: null, onItemModel: null, onItemRig: null };
+let hooks = { onCardPreview: null, onCardResult: null, onCardRig: null, onRigResult: null, onClipResult: null, onCardFailed: null, onItemModel: null, onItemRig: null };
 
 /** Download a finished rig task: the rigged model plus Meshy's basic clips (walking, running...). */
 async function downloadRig(t, base) {
@@ -140,9 +140,45 @@ export async function runJob(jobId, submitPermit = null) {
   const canSubmit = submitPermit && submitPermit[PERMIT] === true;
   const notSubmitted = () => { throw new Error('Stopped before it reached Meshy (the server restarted). Nothing was charged — click the button again to submit.'); };
   try {
+    // meshy-preview: a concept image of exactly what will be sent (same prompt), so you can check it before paying for 3D.
+    if (job.type === 'meshy-preview') {
+      if (!out.task_id) {
+        if (!canSubmit) notSubmitted();
+        out.task_id = (await call(submitPermit, 'POST', KINDS.t2i, {
+          ai_model: p.ai_model || 'nano-banana', prompt: p.prompt.slice(0, 800),
+          ...(p.pose && p.pose !== 'none' ? { pose_mode: p.pose } : {}),
+          ...(p.wide ? { aspect_ratio: '16:9' } : {}),
+        })).result;
+        setJob(jobId, { output: out, status: 'running', message: 'Submitted to Meshy (preview image)…' });
+      }
+      const t = await poll(jobId, 't2i', out.task_id, 'Preview image', 0.02, 0.9, ep);
+      const url = t.image_urls?.[0];
+      if (!url) throw new Error('Meshy finished but returned no image.');
+      out.image_path = await download(url, `cards/${p.card_id}/preview-${Date.now()}.png`);
+      out.credits = t.consumed_credits;
+      hooks.onCardPreview?.(p.card_id, { image_path: out.image_path, task_id: out.task_id, prompt: p.prompt, settings: p.settings });
+      setJob(jobId, { status: 'done', progress: 1, message: `Preview image ready (${out.credits ?? '?'} credits).`, output: out });
+      return;
+    }
     // meshy-3d makes a model for a Stage 2 card; meshy-item3d makes a new draft version of a My World item. Same steps.
     if (job.type === 'meshy-3d' || job.type === 'meshy-item3d') {
       const forItem = job.type === 'meshy-item3d';
+      const steps = p.rig ? 3 : 2;
+      let t;
+      if (p.image_path) {
+        // Built from the approved preview image: shape AND colours follow that picture (one Meshy task).
+        if (!out.refine_id) {
+          if (!canSubmit) notSubmitted();
+          const img = fs.readFileSync(path.join(MEDIA_DIR, p.image_path));
+          out.refine_id = (await call(submitPermit, 'POST', KINDS.i3d, {
+            image_url: `data:image/png;base64,${img.toString('base64')}`, ai_model: 'latest', should_texture: true, texture_resolution: '2k',
+            should_remesh: true, target_polycount: 30000, target_formats: ['glb', 'fbx'],
+            ...(p.pose && p.pose !== 'none' ? { pose_mode: p.pose } : {}),
+          })).result;
+          setJob(jobId, { output: out, status: 'running', message: 'Submitted to Meshy (3D from your preview image)…' });
+        }
+        t = await poll(jobId, 'i3d', out.refine_id, `Step ${p.rig ? '1-2/3' : '1/1'}: 3D model from the preview image`, 0.02, p.rig ? 0.65 : 0.95, ep);
+      } else {
       if (!out.preview_id) {
         if (!canSubmit) notSubmitted();
         out.preview_id = (await call(submitPermit, 'POST', KINDS.t3d, {
@@ -151,7 +187,6 @@ export async function runJob(jobId, submitPermit = null) {
         })).result;
         setJob(jobId, { output: out, status: 'running', message: 'Submitted to Meshy (shape)…' });
       }
-      const steps = p.rig ? 3 : 2;
       await poll(jobId, 't3d', out.preview_id, `Step 1/${steps}: shape`, 0.02, p.rig ? 0.35 : 0.5, ep);
       // Step 2 (colours/textures) belongs to the same requested generation — it is not a retry.
       if (!out.refine_id) {
@@ -161,7 +196,8 @@ export async function runJob(jobId, submitPermit = null) {
         })).result;
         setJob(jobId, { output: out });
       }
-      const t = await poll(jobId, 't3d', out.refine_id, `Step 2/${steps}: colours & textures`, p.rig ? 0.35 : 0.5, p.rig ? 0.65 : 0.95, ep);
+      t = await poll(jobId, 't3d', out.refine_id, `Step 2/${steps}: colours & textures`, p.rig ? 0.35 : 0.5, p.rig ? 0.65 : 0.95, ep);
+      }
       if (!out.model_path) { // once only, also when the job resumes after a restart
         if (!t.model_urls?.glb) throw new Error('Meshy finished but returned no GLB file.');
         const base = forItem ? `world/${p.item_id}/meshy-${Date.now()}` : `cards/${p.card_id}/meshy-${Date.now()}`;

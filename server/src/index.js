@@ -97,7 +97,9 @@ app.put('/api/channel', h((req) => {
 // Full text → Claude (analysis, descriptions, Meshy prompt drafting). Short summary → offline Meshy prompt drafts (800-char limit).
 const worldStyleOut = () => {
   const c = channel();
-  return { text: c.world_style || '', summary: c.world_style_summary || '', updated_at: c.world_style_updated_at || null, history: getSetting('world_style_history', []), profile: currentProfile() };
+  return { text: c.world_style || '', summary: c.world_style_summary || '', updated_at: c.world_style_updated_at || null, history: getSetting('world_style_history', []), profile: currentProfile(),
+    inspiration: { ...getSetting('world_inspiration', {}), images: inspirationRows().map((a) => ({ id: a.id, url: `/media/${a.file_path.split(path.sep).join('/')}`, note: a.notes || '', label: a.label })) },
+    world_look: getSetting('world_look', {}) };
 };
 app.get('/api/world-style', h(() => worldStyleOut()));
 /** Hand edits to the extracted Style Profile (palette roles, finish, proportions, feature switches). */
@@ -135,6 +137,63 @@ app.post('/api/channel/assets', upload.array('files'), h((req) => {
   if (category === 'sound') c.signature_sound_ids = [...(c.signature_sound_ids || []), ...out.map((a) => a.id)];
   setSetting('channel', c);
   return out;
+}));
+
+// ---------- World Style: inspiration screenshots (reference only) + Claude's brief + world landscape ----------
+const inspStale = () => { const s = getSetting('world_inspiration', {}); if (s.brief) setSetting('world_inspiration', { ...s, stale: true }); };
+app.post('/api/world-style/inspiration', upload.array('files', 12), h((req) => {
+  const files = (req.files || []).filter((f) => /^image\//.test(f.mimetype || '') || /\.(png|jpe?g|webp)$/i.test(f.originalname));
+  if (!files.length) throw new HttpError(400, 'Choose one or more images (PNG, JPG or WebP).');
+  if (inspirationRows().length + files.length > 12) throw new HttpError(400, 'Keep it to 12 inspiration screenshots (delete some first).');
+  for (const f of files) { const a = saveUpload(f, 'world', 0, 'inspiration', { source: 'import' }); run(`UPDATE assets SET status='approved', notes=? WHERE id=?`, String(req.body.note || '').slice(0, 300), a.id); }
+  inspStale();
+  return worldStyleOut();
+}));
+app.put('/api/world-style/inspiration/:id(\\d+)', h((req) => {
+  const a = need(one(`SELECT * FROM assets WHERE id=? AND owner_type='world' AND category='inspiration'`, +req.params.id), 'Screenshot');
+  run('UPDATE assets SET notes=? WHERE id=?', String(req.body.note || '').slice(0, 300), a.id);
+  inspStale();
+  return worldStyleOut();
+}));
+app.delete('/api/world-style/inspiration/:id(\\d+)', h((req) => {
+  const a = need(one(`SELECT * FROM assets WHERE id=? AND owner_type='world' AND category='inspiration'`, +req.params.id), 'Screenshot');
+  run('DELETE FROM assets WHERE id=?', a.id);
+  try { fs.unlinkSync(path.join(MEDIA_DIR, a.file_path)); } catch { /* already gone */ }
+  inspStale();
+  return worldStyleOut();
+}));
+/** Claude reads the World Style + all screenshots and writes the brief every later Claude call follows. */
+app.post('/api/world-style/inspiration/brief', h(async () => {
+  if (!providers.isActive('claude')) throw new HttpError(400, 'Connect Claude in AI Connections first.');
+  const { images, notes } = await inspirationImages(8);
+  if (!images.length) throw new HttpError(400, 'Upload at least one inspiration screenshot first.');
+  const r = await providers.inspirationBrief({ guide: channel().world_style || DEFAULT_CHANNEL.world_style, images, notes });
+  setSetting('world_inspiration', { brief: String(r.brief || '').slice(0, 2400), palette: (Array.isArray(r.palette) ? r.palette : []).filter((x) => /^#[0-9a-f]{6}$/i.test(x)).slice(0, 8),
+    avoid: (Array.isArray(r.avoid) ? r.avoid : []).map((x) => String(x).slice(0, 160)).slice(0, 8), landscape: r.landscape || null, at: new Date().toISOString(), stale: false, edited: false });
+  return worldStyleOut();
+}));
+/** Forget the brief (Claude then follows only the written World Style). */
+app.delete('/api/world-style/inspiration/brief', h(() => { setSetting('world_inspiration', {}); return worldStyleOut(); }));
+/** Edit the brief by hand (it is what Claude follows). */
+app.put('/api/world-style/inspiration/brief', h((req) => {
+  const s = getSetting('world_inspiration', {});
+  setSetting('world_inspiration', { ...s, brief: String(req.body.brief || '').slice(0, 2400), edited: true, at: new Date().toISOString() });
+  return worldStyleOut();
+}));
+/** The world's default landscape (every project starts from it; Stage 4 → Look overrides it per project). */
+const WORLD_LOOK = { sky: ['auto', 'clear', 'soft', 'storybook'], clouds: ['none', 'few', 'some', 'many'], hills: ['none', 'low', 'rolling', 'tall'], trees: ['none', 'few', 'some', 'many'], dressing: ['none', 'light', 'lush'], transition: ['auto', 'cut', 'dissolve', 'dip-white', 'iris', 'wipe'], river: ['none', 'behind', 'winding'], houses: ['none', 'few', 'some', 'many'], wind: ['calm', 'breezy', 'windy'], birds: ['none', 'few', 'some'] };
+const cleanWorldLook = (b, prev = {}) => {
+  const o = { ...prev };
+  for (const [k, opts] of Object.entries(WORLD_LOOK)) if (k in b) { if (opts.includes(b[k])) o[k] = b[k]; else delete o[k]; }
+  for (const k of ['ground', 'hill_tint']) if (k in b) { if (/^#[0-9a-f]{6}$/i.test(b[k] || '')) o[k] = b[k]; else delete o[k]; }
+  return o;
+};
+app.put('/api/world-style/look', h((req) => { setSetting('world_look', cleanWorldLook(req.body || {}, getSetting('world_look', {}))); return worldStyleOut(); }));
+app.post('/api/world-style/look/suggest', h(async () => {
+  if (!providers.isActive('claude')) throw new HttpError(400, 'Connect Claude in AI Connections first.');
+  const r = await providers.worldLandscape({ world: await worldContextFull() });
+  setSetting('world_look', cleanWorldLook(r, {}));
+  return { ...worldStyleOut(), why: String(r.why || '').slice(0, 400) };
 }));
 
 // ---------- library: characters / locations / props ----------
@@ -553,7 +612,8 @@ app.post('/api/episodes/:id/assistant/lyrics', h(async (req) => {
   const message = String(req.body.message || '').trim();
   if (!message) throw new HttpError(400, 'Type what you want the assistant to do.');
   const base = req.body.lyrics_id ? lyricsOut(one('SELECT * FROM lyrics WHERE id=? AND episode_id=?', +req.body.lyrics_id, ep.id)) : null;
-  const out = await providers.lyricsAssistant({ channel: channel(), episode: ep, lyrics: base, history: chatFor('lyrics', ep.id), message, library: libraryText() });
+  const w = await worldFor(req.body.reference);
+  const out = await providers.lyricsAssistant({ channel: channel(), episode: ep, lyrics: base, history: chatFor('lyrics', ep.id), message, library: libraryFor(w), world: w });
   let lyricsId = null;
   if (out.lyrics?.sections?.length) {
     // Every assistant change becomes a NEW draft, so you can always go back.
@@ -593,10 +653,49 @@ function createItem({ kind, name, description = '' }) {
 const latestLockedId = `(SELECT id FROM item_versions WHERE item_id=i.id AND status='approved' ORDER BY id DESC LIMIT 1)`;
 function worldContext(excludeItemId = 0) {
   const rows = all(`SELECT i.name, i.kind, v.spec FROM items i JOIN item_versions v ON v.id=${latestLockedId} WHERE i.id != ?`, excludeItemId);
+  const insp = getSetting('world_inspiration', {});
   return {
     guide: channel().world_style || DEFAULT_CHANNEL.world_style,
     locked: rows.map((x) => { const s = JSON.parse(x.spec || '{}'); return `${x.name} (${x.kind}): ${s.look || s.description || ''}`.slice(0, 280); }),
+    inspiration: insp.brief || '',
   };
+}
+/** The inspiration screenshots (reference only), downscaled for Claude. */
+const inspirationRows = () => all(`SELECT * FROM assets WHERE owner_type='world' AND category='inspiration' ORDER BY id`);
+async function inspirationImages(max = 4) {
+  const rows = inspirationRows().slice(0, max);
+  const bufs = await Promise.all(rows.map((r) => imageForAI(path.join(MEDIA_DIR, r.file_path)).catch(() => null)));
+  return { images: bufs.filter(Boolean), notes: rows.map((r) => r.notes).filter(Boolean) };
+}
+/**
+ * The world for ONE Claude call, in the reference mode the user picked in the app:
+ *  'world' (World Style + brief), 'world+cast' (+ existing locked designs, the default), 'new' (only the pasted description).
+ * images: also attach the inspiration screenshots (and, for world+cast, pictures of existing designs).
+ */
+const REF_MODES = ['world', 'world+cast', 'new'];
+async function worldFor(reference, { excludeItemId = 0, images = false, castImages = true } = {}) {
+  const mode = REF_MODES.includes(reference?.mode) ? reference.mode : 'world+cast';
+  if (mode === 'new') {
+    const text = String(reference.text || '').trim().slice(0, 6000);
+    if (!text) throw new HttpError(400, 'Paste the description for “Something new” first.');
+    return { mode, guide: text, locked: [], inspiration: '' };
+  }
+  const w = { ...worldContext(excludeItemId), mode };
+  if (mode === 'world') w.locked = [];
+  if (images) {
+    const insp = await inspirationImages();
+    w.inspirationImages = insp.images; w.inspirationNotes = insp.notes;
+    if (mode === 'world+cast' && castImages) w.castImages = await styleImages(excludeItemId, 3);
+  }
+  return w;
+}
+const libraryFor = (w) => (w.mode === 'world+cast' ? libraryText() : 'none to reuse (the user asked for new characters, not existing ones)');
+
+/** worldContext + the inspiration screenshots, for visual Claude calls (designs, prompts, shot plans, landscape). */
+async function worldContextFull(excludeItemId = 0) {
+  const w = worldContext(excludeItemId);
+  const { images, notes } = await inspirationImages();
+  return { ...w, inspirationImages: images, inspirationNotes: notes };
 }
 const toBufs = async (paths) => (await Promise.all(paths.map((p) => imageForAI(path.join(MEDIA_DIR, p)).catch(() => null)))).filter(Boolean);
 /** One image from each locked design (characters first) — visual style references. */
@@ -709,7 +808,8 @@ app.post('/api/items/:id/assistant', h(async (req) => {
   const spec = JSON.parse(cur?.spec || '{}');
   const scope = `item:${item.id}`;
   const [refImages, styleImgs] = await Promise.all([itemImages(item.id, 6), styleImages(item.id, 3)]);
-  const out = await providers.designAssistant({ item, spec, history: chatFor(scope), message, channel: channel(), world: worldContext(item.id), refImages, styleImages: styleImgs });
+  const w = await worldFor(req.body.reference, { excludeItemId: item.id, images: true, castImages: false });
+  const out = await providers.designAssistant({ item, spec, history: chatFor(scope), message, channel: channel(), world: w, refImages, styleImages: w.mode === 'world+cast' ? styleImgs : [] });
   const v = ensureDraft(item.id);
   run('UPDATE item_versions SET spec=? WHERE id=?', JSON.stringify(out.spec || spec), v.id);
   if (out.spec?.description) run('UPDATE items SET description=? WHERE id=?', out.spec.description, item.id);
@@ -750,7 +850,7 @@ app.post('/api/episodes/:id/music/recommend', h(async (req) => {
   let options, source;
   if (req.body.mode !== 'offline' && providers.isActive('claude')) {
     if (!lyr) throw new HttpError(400, 'Add lyrics in Stage 1 first.');
-    const out = await providers.musicAssistant({ channel: channel(), episode: ep, lyricsText: lyricsText(lyr), brief: JSON.parse(ep.music_brief || '{}'), history: chatFor('music', ep.id), message });
+    const out = await providers.musicAssistant({ channel: channel(), episode: ep, lyricsText: lyricsText(lyr), brief: JSON.parse(ep.music_brief || '{}'), history: chatFor('music', ep.id), message, world: await worldFor(req.body.reference) });
     options = out.options; source = 'claude';
     addChat('music', ep.id, 'user', message || 'Recommend music for this song.');
     addChat('music', ep.id, 'assistant', out.reply || 'Here are some directions.');
@@ -804,7 +904,7 @@ app.post('/api/generate/music', h(async (req) => providers.generateMusic(req.bod
 app.post('/api/generate/video', h(async (req) => providers.generateVideo(req.body)));
 
 // ---------- Stages 2–5 (asset cards, Build Locally, Local AI, Meshy, timing, 3D shots, export) ----------
-registerStudio(app, { h, need, HttpError, upload, touchEpisode, findMatch, libraryText, worldContext, cleanupTmp });
+registerStudio(app, { h, need, HttpError, upload, touchEpisode, findMatch, libraryText, worldContext, worldContextFull, worldFor, cleanupTmp });
 
 // ---------- static ----------
 app.use('/media', express.static(MEDIA_DIR, { fallthrough: false }));

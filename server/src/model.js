@@ -87,6 +87,7 @@ export function cardOut(c) {
     match: c.match_item_id ? libraryPreview(c.match_item_id) : null,
     library: c.item_id ? libraryPreview(c.item_id) : null,
     needs_save: c.status === 'approved' && !c.saved_at,
+    look_check: (() => { try { const x = c.look_check ? JSON.parse(c.look_check) : null; return x && x.model_path === c.model_path ? x : x ? { ...x, stale: true } : null; } catch { return null; } })(),
   };
 }
 export const cardsFor = (epId) => all(`SELECT * FROM asset_cards WHERE episode_id=? ORDER BY CASE kind WHEN 'character' THEN 0 WHEN 'location' THEN 1 ELSE 2 END, id`, epId).map(cardOut);

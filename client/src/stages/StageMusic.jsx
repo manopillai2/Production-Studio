@@ -1,4 +1,5 @@
 import { api } from '../api.js';
+import { askReference } from '../reference.jsx';
 import { useStudio, useAction, Assistant, Placeholder, useCopy, ReviewBanner, mmss } from '../ui.jsx';
 import { fmtTime } from '../api.js';
 import { MusicInner } from '../pages/Music.jsx';
@@ -16,7 +17,11 @@ export default function StageMusic() {
   const lyricsText = lyr ? lyr.sections.map((s) => `[${s.label}]\n${s.lines.map((l) => [l.ta, l.en].filter(Boolean).join('\n')).join('\n')}`).join('\n\n') : '';
   const musicTools = health?.providers?.filter((p) => p.stage === 'music') || [];
 
-  const recommend = (mode) => act(async () => setEpisode((await api.post(`/api/episodes/${episode.id}/music/recommend`, { mode })).episode), 'Music directions ready');
+  const recommend = (mode) => act(async () => {
+    const reference = mode === 'offline' ? undefined : await askReference('music.recommend', 'Recommend music for these lyrics');
+    if (mode !== 'offline' && !reference) return;
+    setEpisode((await api.post(`/api/episodes/${episode.id}/music/recommend`, { mode, reference })).episode);
+  }, 'Music directions ready');
 
   const master = episode.master_audio;
   return (
@@ -83,7 +88,8 @@ export default function StageMusic() {
           scope="music" episodeId={episode.id} title="Music assistant"
           intro="Ask for music ideas: “make it a Carnatic-style sing-along”, “faster and bouncier”, “a lullaby version”. I'll update the direction cards."
           chips={['Recommend music for these lyrics', 'More Tamil folk feel', 'Faster and bouncier', 'Make a lullaby version', 'Which one suits toddlers best?']}
-          send={async (message) => { const r = await api.post(`/api/episodes/${episode.id}/music/recommend`, { message }); setEpisode(r.episode); return r; }}
+          refAction="music.assistant"
+          send={async (message, reference) => { const r = await api.post(`/api/episodes/${episode.id}/music/recommend`, { message, reference }); setEpisode(r.episode); return r; }}
         />
       </div>
 

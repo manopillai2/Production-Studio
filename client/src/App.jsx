@@ -10,6 +10,7 @@ import MotionLibrary from './pages/MotionLibrary.jsx';
 import AnimationStudio from './pages/AnimationStudio.jsx';
 import WorldStyle from './pages/WorldStyle.jsx';
 import Icon, { AppMark } from './icons.jsx';
+import { ReferenceHost } from './reference.jsx';
 
 const parseRoute = () => {
   const parts = window.location.hash.replace(/^#\/?/, '').split('?')[0].split('/').filter(Boolean);
@@ -128,6 +129,7 @@ export default function App() {
           <section className="content">{pageEl}</section>
         </main>
         <Toasts toasts={toasts} />
+        <ReferenceHost />
       </div>
     </StudioContext.Provider>
   );

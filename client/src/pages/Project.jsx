@@ -7,6 +7,7 @@ import StageCast from '../stages/StageCast.jsx';
 import StageMusic from '../stages/StageMusic.jsx';
 import StageAnimate from '../stages/StageAnimate.jsx';
 import StageExport from '../stages/StageExport.jsx';
+import StageGuide from '../stages/StageGuide.jsx';
 import Icon from '../icons.jsx';
 
 export const STAGES = [
@@ -43,6 +44,7 @@ export default function Project() {
       </div>
       {showSettings && <ProjectSettings />}
 
+      <StageGuide stage={stage.key} />
       <Stage key={`${episode.id}-${stage.key}`} />
 
       <div className="row stage-nav">

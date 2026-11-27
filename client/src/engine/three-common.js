@@ -84,3 +84,21 @@ export async function thumbnail(url, size = 256) {
   p.catch(() => thumbCache.delete(key));
   return p;
 }
+
+/** Pictures of a model from the front (3/4) and the side, for Claude's look check. PNG data URLs. */
+export async function modelViews(url, size = 448) {
+  const gltf = await loadGLTF(url);
+  thumbRenderer ??= new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+  thumbRenderer.setSize(size, size, false);
+  thumbRenderer.outputColorSpace = THREE.SRGBColorSpace;
+  const scene = new THREE.Scene(); scene.background = new THREE.Color('#f2f4f7'); studioLights(scene);
+  const obj = cloneScene(gltf); scene.add(obj);
+  const cam = new THREE.PerspectiveCamera(35, 1, 0.01, 1000);
+  const out = [];
+  for (const from of [new THREE.Vector3(0.45, 0.25, 1), new THREE.Vector3(1, 0.2, 0.05)]) {
+    frame(cam, obj, { padding: 1.08, from });
+    thumbRenderer.render(scene, cam);
+    out.push(thumbRenderer.domElement.toDataURL('image/png'));
+  }
+  return out;
+}

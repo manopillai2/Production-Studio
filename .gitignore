@@ -8,3 +8,8 @@ storage/secrets.json
 storage/tmp/
 storage/*.sqlite-wal
 storage/*.sqlite-shm
+
+# Project working files that can be regenerated (synth song stems, per-word TTS clips)
+docs/project-*/music/*.wav
+docs/project-*/music/tts/*.wav
+docs/project-*/music/tts/*.f32

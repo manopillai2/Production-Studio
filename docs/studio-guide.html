@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Rhymes Studio Guide</title>
+<style>
+  @page { size: A4; margin: 16mm 15mm 16mm 15mm; }
+  :root { --ink: #1b2430; --body: #3c4652; --muted: #6b7684; --teal: #0f7d8c; --teal-soft: #e2f2f5; --line: #dfe4ea; --orange: #c2610c; --orange-soft: #fdf1e6; --green: #0f8a5f; --green-soft: #e6f5ee; }
+  * { box-sizing: border-box; }
+  body { font-family: 'Segoe UI', 'Figtree', system-ui, sans-serif; color: var(--body); font-size: 10.5pt; line-height: 1.5; margin: 0; background: #fff; }
+  h1, h2, h3 { color: var(--ink); line-height: 1.2; }
+  h1 { font-size: 26pt; margin: 0 0 6pt; letter-spacing: -0.01em; }
+  h2 { font-size: 16pt; margin: 0 0 8pt; padding-bottom: 4pt; border-bottom: 2px solid var(--teal); break-after: avoid; }
+  h3 { font-size: 12pt; margin: 14pt 0 4pt; break-after: avoid; }
+  p { margin: 0 0 7pt; }
+  section { break-before: page; }
+  section.first { break-before: auto; }
+  .cover { min-height: 250mm; display: flex; flex-direction: column; justify-content: center; }
+  .kicker { color: var(--teal); font-weight: 700; text-transform: uppercase; letter-spacing: .12em; font-size: 9pt; }
+  .lead { font-size: 13pt; color: var(--body); max-width: 150mm; }
+  .toc { margin-top: 18pt; columns: 2; column-gap: 12mm; font-size: 10.5pt; }
+  .toc li { margin-bottom: 3pt; }
+  ol.steps { counter-reset: s; list-style: none; padding: 0; margin: 6pt 0 10pt; }
+  ol.steps > li { counter-increment: s; position: relative; padding: 5pt 0 5pt 30pt; border-bottom: 1px solid var(--line); break-inside: avoid; }
+  ol.steps > li::before { content: counter(s); position: absolute; left: 0; top: 5pt; width: 20pt; height: 20pt; border-radius: 50%; background: var(--teal); color: #fff; font-weight: 700; display: grid; place-items: center; font-size: 9.5pt; }
+  ol.steps > li b { color: var(--ink); }
+  .box { border: 1px solid var(--line); border-radius: 8pt; padding: 8pt 11pt; margin: 8pt 0; break-inside: avoid; }
+  .tip { background: var(--teal-soft); border-color: #bfe0e6; }
+  .warn { background: var(--orange-soft); border-color: #f3c9a3; }
+  .ok { background: var(--green-soft); border-color: #bfe3d2; }
+  .box .t { font-weight: 700; color: var(--ink); display: block; margin-bottom: 2pt; }
+  figure { margin: 8pt 0 10pt; break-inside: avoid; }
+  figure img { width: 100%; border: 1px solid var(--line); border-radius: 6pt; display: block; }
+  figcaption { font-size: 9pt; color: var(--muted); margin-top: 3pt; }
+  table { width: 100%; border-collapse: collapse; margin: 6pt 0 10pt; font-size: 9.5pt; break-inside: avoid; }
+  th, td { text-align: left; padding: 4pt 6pt; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { background: #f4f6f8; color: var(--ink); font-weight: 600; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 8mm; }
+  kbd { font-family: Consolas, monospace; font-size: 8.5pt; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 3pt; padding: 0 4pt; background: #f7f9fb; }
+  .check li { list-style: none; margin-left: -14pt; }
+  .check li::before { content: '☐  '; color: var(--teal); font-weight: 700; }
+  .small { font-size: 9pt; color: var(--muted); }
+  .pill { display: inline-block; background: var(--teal-soft); color: var(--teal); border-radius: 99pt; padding: 0 6pt; font-size: 8.5pt; font-weight: 600; }
+</style>
+</head>
+<body>
+
+<section class="first cover">
+  <div class="kicker">Rhymes Automation · Production Studio</div>
+  <h1>Making a nursery-rhyme video, start to finish</h1>
+  <p class="lead">A step-by-step guide to planning and producing a video in the studio, written for someone new to animation. It covers every feature added in the November 2026 update: the automatic landscape, shot sizes, transitions, title and end cards, karaoke lyrics, Shot Doctor and Claude's look check.</p>
+  <ol class="toc">
+    <li>What changed in this update</li>
+    <li>Five ideas to understand first</li>
+    <li>Before you start (one-time setup)</li>
+    <li>Plan the video on paper</li>
+    <li>Stage 1 · Lyrics</li>
+    <li>Stage 2 · Characters, scenery &amp; props</li>
+    <li>Stage 3 · Music &amp; timing</li>
+    <li>Stage 4 · Animate &amp; assemble</li>
+    <li>Stage 5 · Preview &amp; export</li>
+    <li>Your test project: try every feature</li>
+    <li>Problems and fixes</li>
+    <li>Quick reference</li>
+  </ol>
+</section>
+
+<section>
+  <h2>1 · What changed in this update</h2>
+  <p>I checked your preview of “Riding over the rainbow hill” shot by shot and compared it with how good 3D nursery-rhyme videos are made. The research came from studio and tool write-ups and from a study on pacing for preschoolers. The picture had five problems:</p>
+  <ul>
+    <li><b>An empty world.</b> The sky was one flat colour, the ground was a plain green disc that ended in a hard line, and the scenery model was small, with nothing around it.</li>
+    <li><b>Tiny characters.</b> The camera stood a fixed 9 m away whatever size the character was, so in many shots the bear was a small figure in a big field. Toddlers follow faces, so the subject should fill much of the frame.</li>
+    <li><b>Flat light.</b> There was no light from the sky, no rim light to separate characters from the background, and nothing to show that characters stood on the ground.</li>
+    <li><b>No edit.</b> Hard cuts everywhere, no title, no ending, and plain white captions.</li>
+    <li><b>Hard-to-spot mistakes.</b> Characters had their backs to the camera, were hidden behind props or cut off at the edge, and some models did not match their names (the card “Little Bear” is a bunny).</li>
+  </ul>
+  <figure><img src="guide-images/before.jpg"><figcaption>Before: the 16 shots of “Riding over the rainbow hill”, one picture from the middle of each.</figcaption></figure>
+  <figure><img src="guide-images/after.jpg"><figcaption>After: the same shots with the new landscape, framing, lighting and karaoke lyrics, after Shot Doctor's fixes.</figcaption></figure>
+</section>
+
+<section>
+  <h2>1 · What changed (continued)</h2>
+  <table>
+    <tr><th style="width:30%">New feature</th><th>What it does</th><th style="width:18%">Where</th></tr>
+    <tr><td><b>Landscape</b></td><td>Builds a gradient sky, drifting clouds, three layers of far hills that fade into haze, trees on the hills, flowers, bushes and grass around the scenery, and a ground that blends in. The colours come from your World Style. Stars appear at night.</td><td>Stage 4 → 🎨 Look, or a single shot</td></tr>
+    <tr><td><b>Better light</b></td><td>Colour-true tone mapping, soft light from the sky, a rim light behind the characters, softer shadows, and a contact shadow under everything standing.</td><td>Automatic</td></tr>
+    <tr><td><b>Shot sizes</b></td><td>Extreme wide, wide, full, medium or close-up. The camera frames each character by its real size, then a fitting pass makes sure nobody is cut off. Every still shot gets a slow push-in so it never looks frozen.</td><td>Shot editor → Camera</td></tr>
+    <tr><td><b>Sky objects stay in view</b></td><td>The sun, moon, kite or balloons stay inside the picture at a readable size, whatever the camera does.</td><td>Automatic</td></tr>
+    <tr><td><b>Transitions</b></td><td>Cut, dissolve, dip to white, iris or wipe. Auto mode dissolves at a new song section and uses an iris when the place changes. The video fades in and out.</td><td>Look (default) and each shot</td></tr>
+    <tr><td><b>Title and end cards</b></td><td>The song title pops up during the intro, and a “Bye-bye!” card shows during the outro.</td><td>Look</td></tr>
+    <tr><td><b>Karaoke lyrics</b></td><td>Words light up in your channel's accent colour as they are sung, using your Channel Identity caption style.</td><td>Look</td></tr>
+    <tr><td><b>🩺 Shot Doctor</b></td><td>Checks every shot like a director: characters too small, cut off, hidden behind a prop, back to the camera, mostly empty sky, the same framing twice in a row, long still shots. Every problem has a one-click fix.</td><td>Stage 4 and Stage 5</td></tr>
+    <tr><td><b>Shot thumbnails</b></td><td>A small picture of every shot in the shot list.</td><td>Stages 4 and 5</td></tr>
+    <tr><td><b>👁 Look check</b></td><td>Claude looks at pictures of a model and says whether it matches its name and description.</td><td>Stage 2</td></tr>
+    <tr><td><b>Direction and feedback</b></td><td>Under every 3D result: the exact prompt it was made from, and a box for your notes. Claude revises the prompt from your notes and keeps applying them in later drafts.</td><td>Stage 2 card</td></tr>
+    <tr><td><b>Inspiration screenshots</b></td><td>Upload screenshots from videos you like. Claude writes a brief that takes about 80% of their ideas into your world (never copying characters or logos), and every Claude call follows it.</td><td>World Style</td></tr>
+    <tr><td><b>World landscape</b></td><td>The default landscape for every video, suggested by Claude from your World Style.</td><td>World Style</td></tr>
+    <tr><td><b>Comfort</b></td><td>“How this stage works” guides, a Stage 4 layout where the player stays in view, quick placement buttons, keyboard shortcuts, a “Before you export” checklist, and a “keep facing the camera while moving” option for riders and vehicles.</td><td>Everywhere</td></tr>
+  </table>
+  <figure><img src="guide-images/overlays.jpg"><figcaption>Title card, karaoke lyrics, the iris transition between the two places, and the close-up framing.</figcaption></figure>
+</section>
+
+<section>
+  <h2>2 · Five ideas to understand first</h2>
+  <h3>Scenery vs landscape</h3>
+  <p><b>Scenery</b> is the set your characters stand and move on: a meadow, a farmyard, a bedroom. You make it in Stage 2 like any other model. <b>Landscape</b> is everything around the set out to the horizon: sky, clouds, far hills, trees and the ground beyond. The studio builds the landscape automatically for every shot, so your scenery only needs the area where the action happens. A small set is fine.</p>
+  <h3>Shot size</h3>
+  <p>How much of the picture the subject fills. Good rhyme videos change size often. They open a new place wide, show the action in full and medium shots, and give the singer close-ups on important lines. Young children follow faces, so most shots should be <b>full</b> or <b>medium</b>.</p>
+  <table>
+    <tr><th>Size</th><th>What you see</th><th>Use it for</th></tr>
+    <tr><td>Extreme wide</td><td>The whole place, small characters</td><td>Opening a new place (rarely)</td></tr>
+    <tr><td>Wide</td><td>The place and the characters</td><td>Start of a verse, travelling</td></tr>
+    <tr><td>Full</td><td>The whole body fills the frame</td><td>Most action: dancing, riding, waving</td></tr>
+    <tr><td>Medium</td><td>Waist up</td><td>Two characters talking or singing</td></tr>
+    <tr><td>Close-up</td><td>Head and shoulders of one character</td><td>Key lines, emotions, the chorus hook</td></tr>
+  </table>
+  <h3>Camera move</h3>
+  <p>The move says how the camera travels during the shot. Each move has a natural size; you can change it under Shot size.</p>
+  <table>
+    <tr><th>Move</th><th>What it does</th></tr>
+    <tr><td>Still (wide)</td><td>Holds the view with a slow push-in</td></tr>
+    <tr><td>Dolly in</td><td>Moves one size closer during the shot (wide → full …)</td></tr>
+    <tr><td>Pan</td><td>Slides sideways (“Pan amount” sets how far)</td></tr>
+    <tr><td>Orbit</td><td>A slow half-circle around the action</td></tr>
+    <tr><td>Tilt up</td><td>Looks up a little, toward the sky (sun, rainbow)</td></tr>
+    <tr><td>Follow</td><td>Tracks one character as it moves</td></tr>
+    <tr><td>Group</td><td>Keeps everyone standing in the frame</td></tr>
+    <tr><td>Close-up</td><td>Stays on one character's face</td></tr>
+  </table>
+  <h3>Transitions</h3>
+  <p>A <b>cut</b> is the normal change inside a verse. A <b>dissolve</b> (soft cross-fade) marks a new section, such as verse to chorus. An <b>iris</b> (a closing and opening circle) marks a new place or the end. <b>Dip to white</b> is a flash for a magical moment. Too many effects are distracting, so leave the default on Auto.</p>
+  <h3>Pace</h3>
+  <p>Research on preschoolers (Lillard &amp; Peterson, 2011) found that very fast, frantic cartoons left 4-year-olds less able to concentrate right afterwards. Keep shots around 3–8 seconds, one idea per shot, gentle movement, and repeat the chorus visuals when the chorus repeats.</p>
+</section>
+
+<section>
+  <h2>3 · Before you start (one-time setup)</h2>
+  <ol class="steps">
+    <li><b>Start the studio.</b> In PowerShell: <code>cd "…\Production Studio"</code>, then <code>npm.cmd start</code>. Open <b>http://localhost:5175</b>. The bottom-left corner shows Assistant, FFmpeg and Paid generation.</li>
+    <li><b>AI Connections.</b> Claude must show <span class="pill">active</span> for planning, prompts, feedback and look checks. Meshy is optional (paid 3D models).</li>
+    <li><b>World Style</b> (My World → World Style). Describe your world: colours, how characters look, the feel of the places. It is <b>compulsory</b>: every Claude call follows it (lyrics, characters, props, scenery, landscape, shot plans, music mood), and Meshy prompts include its summary. See the next page for inspiration screenshots.</li>
+    <li><b>Channel Identity.</b> Set the channel name, colours (the primary colour is used for the title card, the accent colour for the karaoke highlight) and the caption style (size, colour, outline, position).</li>
+    <li><b>My World</b> is your library. Every approved, saved character, scenery and prop is reused unchanged in later songs. That is how a channel keeps recognisable characters.</li>
+  </ol>
+  <div class="box tip"><span class="t">Why the library matters</span>Children love seeing the same friends again. Build a small cast (2–4 characters, 2–3 places) and reuse it, rather than making new characters for every song.</div>
+
+</section>
+
+<section>
+  <h2>3b · World Style, inspiration and landscape</h2>
+  <ol class="steps">
+    <li><b>Describe your world</b> in the big World Style box: the place, the characters' shapes and faces, materials, colours, light and mood. Click <b>Save World Style</b>. Your words always win.</li>
+    <li><b>Add inspiration screenshots</b> (up to 12) from videos you like. Add a note to each, such as “I love the soft sky and the round trees”.</li>
+    <li><b>✨ Read the screenshots with Claude.</b> Claude writes an <b>inspiration brief</b> that takes about 80% of the ideas (look and feel, colours, shapes, light, landscape, framing) and fits them to your description. It lists what it will <b>never copy</b>: characters, logos, text, exact designs. You can edit the brief; it is what Claude follows. If you change the screenshots, read them again.</li>
+    <li><b>Landscape for every video → ✨ Suggest from my World Style.</b> Claude picks the sky, clouds, hills, trees, flowers and colours. Adjust them by hand if you like.</li>
+  </ol>
+  <figure><img src="guide-images/world_inspiration.jpg"><figcaption>World Style: inspiration screenshots, the inspiration brief, and Landscape for every video.</figcaption></figure>
+  <h3>When is the landscape designed and finalised?</h3>
+  <p>The landscape is never a separate model you approve. It is rebuilt from settings each time you press Generate Preview or Export, in three layers, where a later layer overrides an earlier one:</p>
+  <table>
+    <tr><th>Layer</th><th>Where</th><th>Use it for</th></tr>
+    <tr><td>1 · World</td><td>World Style → Landscape for every video</td><td>Your channel's normal look. Every project starts from it.</td></tr>
+    <tr><td>2 · Project</td><td>Stage 2 → Landscape (whole video), or Stage 4 → 🎨 Look</td><td>This song only, for example a lusher meadow. “Use world defaults” goes back to layer 1.</td></tr>
+    <tr><td>3 · Place</td><td>Stage 2 → Landscape → each place</td><td>What is different around one scenery: time of day, more trees, a sunset sky.</td></tr>
+    <tr><td>4 · Shot</td><td>Stage 4 shot editor → Landscape for this shot</td><td>One moment, for example many clouds on “clouds float by”.</td></tr>
+  </table>
+  <p>Colours come from the World Style palette (the Style Profile) unless you pick a ground or hill colour. Each shot's lighting (morning, day, sunset, night) recolours the sky. The landscape is <b>final when you export</b>: the MP4 uses exactly what the preview shows, and you can change it and export again at any time.</p>
+
+</section>
+
+<section>
+  <h2>3c · Choosing Claude's reference for every request</h2>
+  <p>Every ✨ Claude action (analyze the lyrics, draft or revise a prompt, design the landscape, plan the shots, recommend music) first asks <b>what Claude should use as reference</b>. The chat assistants (Lyrics, Music) show the choice as a chip above the message box; click it to change.</p>
+  <table>
+    <tr><th style="width:32%">Choice</th><th>Claude uses</th><th style="width:30%">Pick it when</th></tr>
+    <tr><td><b>🌍 My World</b></td><td>Your World Style description and inspiration brief (and screenshots). It creates fresh designs and does not base them on your existing characters.</td><td>A new character or place that must still look like your world</td></tr>
+    <tr><td><b>🌍 + 👥 My World + my existing characters &amp; designs</b></td><td>The same, plus your saved My World designs (descriptions and pictures). Stage 2 also offers them for reuse.</td><td>Most songs: your recurring cast and places</td></tr>
+    <tr><td><b>✨ Something new</b></td><td>Only the description you paste in the box. The World Style is ignored for this request.</td><td>A one-off special (a winter episode, a new series idea)</td></tr>
+  </table>
+  <p>Your last choice for each action is remembered and pre-selected next time. Cancel stops the request; nothing is sent.</p>
+  <figure><img src="guide-images/ref_dialog.jpg" style="max-width:80%"><figcaption>The reference dialog, with “Something new” selected and its description box.</figcaption></figure>
+
+  <h2 style="margin-top:14pt">4 · Plan the video on paper (10 minutes)</h2>
+  <p>Answer these before you open the studio. They make every stage faster.</p>
+  <table>
+    <tr><th style="width:34%">Question</th><th>Good answer for a toddler video</th></tr>
+    <tr><td>What does the child learn?</td><td>One thing: colours, counting to 5, animal sounds, a routine (brushing teeth)</td></tr>
+    <tr><td>How long?</td><td>1–2 minutes (12–20 sung lines)</td></tr>
+    <tr><td>Structure?</td><td>Verse 1 · Chorus · Verse 2 · Chorus. The chorus repeats word for word.</td></tr>
+    <tr><td>Who is in it?</td><td>1 main character plus 1–2 friends. Use characters already in My World where you can.</td></tr>
+    <tr><td>Where?</td><td>One place per verse (two at most), in the same world</td></tr>
+    <tr><td>What do we see on each line?</td><td>One clear action per line: rides in, waves, points at the sky, jumps</td></tr>
+    <tr><td>Music?</td><td>2–4 s of instrumental before the first line (title card) and after the last line (end card)</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2>5 · Stage 1 · Lyrics</h2>
+  <figure><img src="guide-images/lyrics.jpg"><figcaption>Stage 1: the guide at the top, the versions, the lines with action cues, and the Lyrics assistant on the right.</figcaption></figure>
+  <ol class="steps">
+    <li><b>Projects → + New project.</b> Give it a name and a language.</li>
+    <li><b>Choose a target length</b> (1:00–2:00). It is only for planning; the real length comes from the song in Stage 3.</li>
+    <li><b>Write or generate the lyrics.</b> Type them, or ask the Lyrics assistant (“Write a rhyme about a duck who learns to count to five, with a chorus”).</li>
+    <li><b>Add an action cue to every line.</b> This is what we SEE: “Duck jumps into the pond with a big splash.” Ask the assistant: <i>Add action cues for every line</i>. Stage 4 turns cues into shots.</li>
+    <li><b>Name characters in the lines</b> (“Dotty the Duck”), so Stage 2 finds them.</li>
+    <li><b>Approve Lyrics.</b> Later stages use the approved version. Changing it later flags the stages that need a review.</li>
+  </ol>
+  <div class="box tip"><span class="t">Good lyric lines</span>Short (4–8 words), simple words, one idea, a rhyme at the end of line pairs. Repeat the chorus exactly.</div>
+</section>
+
+<section>
+  <h2>6 · Stage 2 · Characters, scenery &amp; props</h2>
+  <ol class="steps">
+    <li><b>Write “Your ideas for Claude”.</b> Under Characters: who they are and how they look. Under Scenery: the places, and that both verses share one world.</li>
+    <li><b>Analyze with Claude</b> (or offline). You get one card per character, scenery and prop. Matches from My World appear first: click <b>Confirm reuse</b> to use them as they are.</li>
+    <li><b>Open each new card and choose a method:</b>
+      <ul>
+        <li><b>Build Locally</b>: free and instant, for bunnies, suns, clouds, trees, hills and meadows.</li>
+        <li><b>Import Model</b>: a .glb you already have.</li>
+        <li><b>Generate in Meshy</b> (paid): click <b>Draft prompt with Claude</b>, then <b>Preview in Meshy</b> (about 3 credits) to see a picture first. If you like it, <b>Generate in Meshy</b> and choose “Build from the preview image” (about 30 credits). For characters, keep “rig for animation” on so they can walk and wave.</li>
+      </ul></li>
+    <li><b>Review the result</b> in the 3D viewer (Front, Side, 3/4, Top).</li>
+    <li><b>👁 Check with Claude.</b> Claude looks at the model and says whether it matches the name. Or use <b>👁 Check all models with Claude</b> at the top for the whole cast.</li>
+    <li><b>Not right? Use “Direction for this result”.</b> It shows the exact prompt used. Type what should change (“ears longer and floppier, fur more orange”) and click <b>✨ Revise prompt with Claude</b>. Claude changes only that and keeps everything else. Preview or generate again.</li>
+    <li><b>Approve</b>, then <b>Download &amp; Save to My World</b>. The card turns green.</li>
+    <li><b>Design the landscape</b> at the bottom of Stage 2 (“Landscape · where the story happens”). Click <b>✨ Design the landscape with Claude</b> (or <b>Simple landscape</b>). Read the plan, check each place's 3D preview, and adjust its time of day, sky, clouds, hills, trees and flowers. Stage 4 uses it automatically.</li>
+  </ol>
+  <figure><img src="guide-images/cast_landscape.jpg"><figcaption>Stage 2 · Landscape: Claude's plan, the settings for the whole video, and each place with its live 3D preview.</figcaption></figure>
+  <figure><img src="guide-images/cast_lookcheck.jpg"><figcaption>The look check caught a real mistake in your current project: the card “Little Bear” holds a bunny model. Below it are the direction and feedback box.</figcaption></figure>
+  <div class="box tip"><span class="t">Scenery tip</span>Make the scenery only as big as the action needs: a path, a pond and a few flowers. The studio adds sky, hills and trees around it in Stage 4.</div>
+</section>
+
+<section>
+  <h2>7 · Stage 3 · Music &amp; timing</h2>
+  <figure><img src="guide-images/music.jpg"><figcaption>Stage 3: the music direction and assistant, the master audio track, and lyric timing.</figcaption></figure>
+  <ol class="steps">
+    <li><b>Recommend music.</b> The Music assistant suggests style, tempo and instruments for your lyrics. Make the song in your music tool (Suno, Eleven Music, a singer).</li>
+    <li><b>Import audio:</b> either the finished song, or a vocal take and an instrumental to mix here.</li>
+    <li><b>Set the master audio track.</b> Its real length is now the video's length.</li>
+    <li><b>Mark the timing of each line.</b> Click <b>Tap along from the start</b>, then press <kbd>S</kbd> at the moment each line starts. Press <kbd>E</kbd> when a line ends before a pause. Correct any number by typing in the table. Use ▶ to check a line.</li>
+    <li><b>Leave room for the cards.</b> Line 1 should start 2–4 s in (title card) and the last line should end 2–4 s before the song ends (end card). Under 1.2 s, the card is skipped and Stage 5 tells you.</li>
+    <li><b>Approve timing.</b> Captions, mouth movement, karaoke and shot changes all follow these times.</li>
+  </ol>
+  <div class="box warn"><span class="t">Your current project</span>“Riding over the rainbow hill” has a 2.0 s intro (the title card shows) but only a 1.1 s outro, so there is no end card. Use a version of the song with a longer instrumental ending, or turn the end card off.</div>
+</section>
+
+<section>
+  <h2>8 · Stage 4 · Animate &amp; assemble</h2>
+  <p>The screen has two halves. On the left are the <b>player</b>, the <b>shot list</b> with thumbnails and <b>🩺 Shot Doctor</b>; they stay in view while you scroll. On the right is the <b>shot editor</b> for the selected shot.</p>
+  <figure><img src="guide-images/animate_work.jpg"><figcaption>Stage 4 after Generate Preview: the player with the title card, shot thumbnails, Shot Doctor and the shot editor.</figcaption></figure>
+  <ol class="steps">
+    <li><b>🎬 Direct with Claude.</b> Describe the story in plain words: who does what, where, and how it should feel. Mention shot sizes if you like (“start wide, close-up on the duck for the chorus”). Click <b>Make a plan</b>. Claude answers with what it did, what it could not do, and fixes it can make in earlier stages (for example a missing character), which you approve or skip. <b>Change the current plan</b> edits only what you mention.</li>
+    <li><b>🎨 Look.</b> Choose the landscape for the whole video: sky style, clouds, hills, trees, flowers and bushes, ground and hill colour. Then choose the on-screen text: title card and its text, end card text, karaoke lyrics, fade in and out, and the default transition.</li>
+    <li><b>▶ Generate Preview.</b> The 3D scene loads. Shot thumbnails appear and Shot Doctor checks every shot.</li>
+    <li><b>Read 🩺 Shot Doctor.</b> Orange items are problems, blue items are tips. Click <b>Shot N</b> to jump there, the button to fix it, or <b>Fix all problems</b>. The preview rebuilds and checks again.</li>
+    <li><b>Fine-tune shots</b> in the editor: lyric lines and timing, scenery and lighting, <i>Landscape for this shot</i> (for example “many clouds” on a cloud line), camera move, <b>shot size</b>, <b>transition</b>, then the characters (Quick: Left, Centre, Right, Front, Back, Face camera, In the sky, On the ground), movement and body actions.</li>
+    <li><b>Watch again</b> in full screen (<kbd>F</kbd>). <kbd>Space</kbd> plays and pauses; <kbd>←</kbd> and <kbd>→</kbd> jump between shots.</li>
+  </ol>
+</section>
+
+<section>
+  <h2>8 · Stage 4 (continued)</h2>
+  <div class="two">
+    <figure><img src="guide-images/animate_direct.jpg"><figcaption>🎬 Direct with Claude: your direction and Claude's last answer (click to show or hide).</figcaption></figure>
+    <figure><img src="guide-images/animate_look.jpg"><figcaption>🎨 Look: landscape and on-screen text for the whole video.</figcaption></figure>
+  </div>
+  <h3>What Shot Doctor checks</h3>
+  <table>
+    <tr><th>Problem</th><th>Why it matters</th><th>One-click fix</th></tr>
+    <tr><td>Characters small in the picture</td><td>Toddlers follow faces and actions</td><td>Full shot</td></tr>
+    <tr><td>Out of the picture or cut off at the edge</td><td>The subject is lost</td><td>Group camera, or widen the shot</td></tr>
+    <tr><td>Hidden behind another object</td><td>For example a big rainbow in front of the bear</td><td>Move the object behind</td></tr>
+    <tr><td>Back to the camera</td><td>We should see faces</td><td>Face the camera, walk toward the camera, or keep facing the camera while moving</td></tr>
+    <tr><td>Mostly empty sky</td><td>Wasted picture</td><td>Lower the view (full shot)</td></tr>
+    <tr><td>Same framing as the previous shot</td><td>Variety keeps attention</td><td>Change the shot size</td></tr>
+    <tr><td>Long still shot (over 10 s)</td><td>Feels frozen</td><td>Slow push-in (dolly in)</td></tr>
+  </table>
+  <div class="box tip"><span class="t">Riders and vehicles</span>A character on a bike, car or train turns to face where it travels. If the model was built facing the viewer with the vehicle sideways (like the bear on the bicycle), untick <b>“Turns to face where it goes”</b> on that actor, or use Shot Doctor's “Keep facing the camera while moving”. The vehicle then rolls sideways while the rider looks at you.</div>
+  <div class="box"><span class="t">Simple plan (no AI)</span>Makes one shot per lyric line with a director's rhythm: wide for a new place, then full, medium, close-up, pan and orbit. It costs nothing and is a good starting point to edit by hand.</div>
+</section>
+
+<section>
+  <h2>9 · Stage 5 · Preview &amp; export</h2>
+  <figure><img src="guide-images/export.jpg"><figcaption>Stage 5: the full preview with the title card, shot thumbnails, export and the “Before you export” checklist.</figcaption></figure>
+  <ol class="steps">
+    <li><b>Watch the whole video</b> in full screen once, as a parent would.</li>
+    <li><b>Go through “Before you export”.</b> Every <b>!</b> has an <b>Open</b> button that takes you to the stage where it is fixed. It checks the song, the timing, scenery in every shot, Shot Doctor, the title and end cards, long shots and the total length.</li>
+    <li><b>Export:</b> 720p for a quick check, 1080p for YouTube. Keep the tab open while frames render. The preview and the MP4 use the same drawing code, so the export looks exactly like the preview.</li>
+    <li><b>Download</b> the MP4 and the captions .srt from the Exports list.</li>
+    <li><b>On YouTube:</b> upload the MP4, add the .srt as subtitles, choose <b>“Yes, it’s made for kids”</b>, and use the title and description from Channel Identity.</li>
+  </ol>
+  <div class="box ok"><span class="t">Change anything, any time</span>The project stays editable. Change a shot, the look or the timing and export again. The stages you need to review are flagged.</div>
+</section>
+
+<section>
+  <h2>10 · Your test project: try every feature</h2>
+  <p>Make a short new project to learn the studio. Example: <b>“Dotty the Duck counts to five”</b>, 1 minute, two places (the pond and the meadow next to it). Tick each box as you go.</p>
+  <h3>Stage 1</h3>
+  <ul class="check">
+    <li>World Style: add 2–3 inspiration screenshots with notes → ✨ Read the screenshots with Claude → read the brief → ✨ Suggest from my World Style</li>
+    <li>New project “Dotty the Duck counts to five”, English, target 1:00</li>
+    <li>Ask the assistant: “Write a counting rhyme to five about Dotty the Duck: verse, chorus, verse, chorus”</li>
+    <li>Ask: “Add action cues for every line”, then approve the lyrics</li>
+  </ul>
+  <h3>Stage 2</h3>
+  <ul class="check">
+    <li>Ideas for Claude: “Dotty is a small yellow duckling with an orange bow. Verse 1 at a pond, verse 2 in the meadow next to it, same world.”</li>
+    <li>Analyze with Claude. Reuse any My World match (sun, clouds, meadow).</li>
+    <li>Make Dotty: Draft prompt with Claude → Preview in Meshy → Generate from the preview, with a rig (or Build Locally to stay free)</li>
+    <li>👁 Check with Claude on Dotty. If anything is wrong, write it in the feedback box → Revise prompt with Claude</li>
+    <li>Make the pond scenery small: just the pond and a few reeds</li>
+    <li>Try the reference dialog: draft one prompt with “My World”, then redo it with “Something new” and a pasted description, and compare</li>
+    <li>✨ Design the landscape with Claude; look at both places' previews; set the meadow to “sunset” and watch its preview change</li>
+    <li>Approve and save everything to My World</li>
+  </ul>
+  <h3>Stage 3</h3>
+  <ul class="check">
+    <li>Import the song with 3 s of instrumental at the start and the end; set it as master</li>
+    <li>Tap along with <kbd>S</kbd>, check line 1 starts at about 3 s, approve timing</li>
+  </ul>
+  <h3>Stage 4</h3>
+  <ul class="check">
+    <li>Click <b>Simple plan (no AI)</b> first, then Generate Preview. Notice the wide → full → medium → close-up rhythm.</li>
+    <li>🎨 Look: clouds “many”, trees “many”, flowers “lush”, sky “soft”. Watch the landscape change.</li>
+    <li>🎬 Direct with Claude: “Dotty walks to the pond, counts the fish (close-ups), and waves goodbye at the end. Open each place with a wide shot.” → Make a new plan</li>
+    <li>Generate Preview → 🩺 Shot Doctor → Fix all problems</li>
+    <li>On one shot: Shot size → Close-up; Transition → Dip to white; Landscape for this shot → Clouds “none”</li>
+    <li>Watch the iris transition when the place changes, the title card and the karaoke lyrics</li>
+  </ul>
+  <h3>Stage 5</h3>
+  <ul class="check">
+    <li>Every checklist item is ✓ (or you know why not)</li>
+    <li>Export 720p, watch the MP4, then export 1080p</li>
+  </ul>
+</section>
+
+<section>
+  <h2>11 · Problems and fixes</h2>
+  <table>
+    <tr><th style="width:36%">You see…</th><th>Do this</th></tr>
+    <tr><td>A character floats or sinks</td><td>Quick → On the ground. Characters stand on the scenery surface automatically; a height of 2 m or more means “in the sky”.</td></tr>
+    <tr><td>The model faces the wrong way</td><td>Face camera, or set Turn. While travelling, untick “Turns to face where it goes”.</td></tr>
+    <tr><td>Characters are tiny</td><td>Shot size → Full or Medium (Shot Doctor fixes this).</td></tr>
+    <tr><td>The same character looks different between shots</td><td>Two different models are being used (in your project the orange bear in verse 1 is a different model from the brown bear in verse 2). Use one saved model throughout, and check the cast with 👁.</td></tr>
+    <tr><td>A model is not what its name says</td><td>👁 Check with Claude, then rename the card or regenerate it from the feedback box.</td></tr>
+    <tr><td>No title or end card</td><td>The intro or outro is shorter than 1.2 s: change the timing (Stage 3) or the song.</td></tr>
+    <tr><td>Lyrics appear too early or late</td><td>Fix the line times in Stage 3; captions, karaoke and shots follow them.</td></tr>
+    <tr><td>The preview is slow</td><td>Close other tabs and apps. Imported models with very many triangles are heavy (the card shows the triangle count); Meshy models are already limited to about 30k.</td></tr>
+    <tr><td>Claude's plan ignores something</td><td>Read “Couldn’t do” in its answer. Approve its proposed fixes (new character or prop), or write a more specific direction and click <b>Change the current plan</b>.</td></tr>
+  </table>
+
+  <h2 style="margin-top:14pt">12 · Quick reference</h2>
+  <table>
+    <tr><th>Keys (player)</th><td><kbd>Space</kbd> play / pause · <kbd>←</kbd> <kbd>→</kbd> previous / next shot · <kbd>F</kbd> full screen · double-click the picture: full screen</td></tr>
+    <tr><th>Paid actions</th><td>Only buttons that say Meshy cost credits (preview about 3, model about 30, rig about 5). Anything with ✨ or 👁 uses Claude. Everything else is free and offline.</td></tr>
+    <tr><th>Where things live</th><td>Shots and look: Stage 4. Caption style and colours: Channel Identity. World colours: World Style. Reusable models: My World.</td></tr>
+    <tr><th>Good video recipe</th><td>1–2 minutes · verse / chorus · 3–8 s shots · wide to open a place, full and medium for action, close-ups on the hook · faces toward the camera · the same cast and world every time.</td></tr>
+  </table>
+  <p class="small">Sources for the research notes: industry write-ups on 3D nursery-rhyme production (whizzystudios.com, atlabs.ai, filmora.wondershare.com), stylized background and layering guides, and Lillard &amp; Peterson (2011), “The immediate impact of different types of television on young children's executive function”, <i>Pediatrics</i>.</p>
+</section>
+
+</body>
+</html>

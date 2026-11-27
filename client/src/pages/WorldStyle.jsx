@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../api.js';
 import { useStudio, useAction, Confirm } from '../ui.jsx';
 import { Thumb3D } from '../engine/Viewer3D.jsx';
+import { LOOK_OPTIONS } from '../engine/Landscape.js';
 
 const ROLE_LABELS = { fur: 'Fur (main body)', fur_support: 'Muzzle, chest & belly', inner_ear: 'Inner ears', iris: 'Eyes (iris)', nose: 'Nose', cheeks: 'Cheeks', accent: 'Focal accent', foliage: 'Foliage', foliage_far: 'Distant foliage', stone: 'Stones', soil: 'Paths & soil', water: 'Water', sun: 'Sun', moon: 'Moon', sky_day: 'Day sky' };
 const SWITCHES = [
@@ -61,7 +62,8 @@ function ProfilePanel({ doc, onSaved }) {
 
 /** One shared World Style document that every new character, scenery and prop follows. */
 export default function WorldStyle() {
-  const { toast, refreshChannel } = useStudio();
+  const { toast, refreshChannel, health } = useStudio();
+  const claudeOn = health?.providers?.find((p) => p.id === 'claude')?.state === 'active';
   const [doc, setDoc] = useState(null);
   const [text, setText] = useState('');
   const [summary, setSummary] = useState('');
@@ -98,6 +100,9 @@ export default function WorldStyle() {
           placeholder={'WORLD STYLE — SKYLEAF MEADOW\n\nDescribe your world, character shapes and proportions, faces and fur, recurring characters, scenery, colours, materials, light and 3D quality…'} />
       </div>
 
+      <InspirationPanel doc={doc} setDoc={setDoc} claudeOn={claudeOn} />
+      <WorldLookPanel doc={doc} setDoc={setDoc} claudeOn={claudeOn} />
+
       <div className="grid2">
         <div className="card">
           <h3>Short summary for prompts</h3>
@@ -108,11 +113,16 @@ export default function WorldStyle() {
         </div>
         <div className="card">
           <h3>Where it's used</h3>
+          <p className="small">Your World Style is used by every Claude call. Before each ✨ action the app asks what Claude should use as reference: <b>My World</b> (this document + inspiration brief), <b>My World + my existing characters & designs</b>, or <b>Something new</b> (only a description you paste for that request). The screenshots themselves go to the calls that design or plan something you will see.</p>
           <ul className="small used-list">
-            <li><b>Stage 2 · Analyze with Claude</b> — full document: descriptions, signature features and Meshy prompts for every asset.</li>
-            <li><b>Stage 2 · Draft prompt with Claude</b> — full document, condensed into a ≤ 700-character Meshy prompt.</li>
-            <li><b>Stage 2 · offline analysis & new cards</b> — the short summary is added to the Meshy prompt draft.</li>
-            <li><b>Lyrics assistant & design chat</b> — full document as the world's style rules.</li>
+            <li><b>Stage 1 · Lyrics assistant</b>: document + brief (words, places and characters fit your world).</li>
+            <li><b>Stage 2 · Analyze with Claude</b>: document + brief, for the descriptions and signature features of every asset.</li>
+            <li><b>Stage 2 · Draft prompt / Revise prompt with Claude</b>: document + brief + screenshots, condensed into the Meshy prompt.</li>
+            <li><b>Stage 2 · offline analysis & new cards</b>: the short summary is added to the Meshy prompt draft.</li>
+            <li><b>Stage 3 · Music assistant</b>: document + brief (the mood of the music).</li>
+            <li><b>Stage 4 · Direct with Claude</b>: document + brief + screenshots (framing, shot sizes, landscape per shot).</li>
+            <li><b>Stage 4 · Landscape</b>: “Landscape for every video” below; colours from the Style Profile.</li>
+            <li><b>My World · design chat</b>: document + brief + screenshots.</li>
             <li><b>Build Locally</b> — templates already use soft rounded shapes and matte pastel materials; the document's specifics (like Pip's curled ear and golden paw) go in each card's description and recipe.</li>
           </ul>
           <h4>Locked designs used as visual references ({locked.length})</h4>
@@ -150,6 +160,119 @@ export default function WorldStyle() {
             {!doc.history.length && <li className="muted small">No earlier versions yet. Each save keeps the previous version here (last 30).</li>}
           </ul>
         )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Screenshots from videos you find inspiring. Reference only: Claude reads them with your World Style and writes an
+ * inspiration brief (about 80% of the ideas, never copying characters, logos or exact designs). Every Claude call
+ * follows the brief; design, prompt and shot-planning calls also see the screenshots.
+ */
+function InspirationPanel({ doc, setDoc, claudeOn }) {
+  const { toast } = useStudio();
+  const [act, busy] = useAction();
+  const insp = doc.inspiration || {};
+  const imgs = insp.images || [];
+  const [brief, setBrief] = useState(insp.brief || '');
+  const [note, setNote] = useState('');
+  useEffect(() => setBrief(insp.brief || ''), [insp.brief]);
+  const upload = (files) => act(async () => {
+    const list = [...files].filter((f) => /^image\//.test(f.type));
+    if (!list.length) throw new Error('Choose PNG, JPG or WebP images.');
+    setDoc(await api.upload('/api/world-style/inspiration', list, { note }));
+    setNote('');
+  }, 'Added. Click “Read the screenshots with Claude” to update the brief.');
+  const read = () => act(async () => setDoc(await api.post('/api/world-style/inspiration/brief')), 'Claude wrote the inspiration brief. Every Claude call now follows it.');
+  const briefDirty = brief !== (insp.brief || '');
+  return (
+    <div className="card inspiration">
+      <div className="section-head">
+        <div>
+          <h3>Inspiration screenshots <span className="muted small">· reference only</span></h3>
+          <p className="muted small">Add screenshots from videos you like (other channels, films, picture books). Claude takes about <b>80% of the ideas</b> (look and feel, colours, shapes, light, landscape, framing) and makes them fit <b>your</b> description. It never copies their characters, logos, text or exact designs. Your written World Style always wins where they differ.</p>
+        </div>
+        <span className="muted small">{imgs.length}/12</span>
+      </div>
+      <div className="insp-grid">
+        {imgs.map((im) => <InspirationTile key={im.id} im={im} setDoc={setDoc} />)}
+        {imgs.length < 12 && (
+          <label className="insp-add" onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); upload(e.dataTransfer.files); }}>
+            <input type="file" accept="image/png,image/jpeg,image/webp" multiple hidden onChange={(e) => { const f = e.target.files; e.target.value = ''; if (f?.length) upload(f); }} />
+            <b>＋ Add screenshots</b><span className="small muted">click or drop images here</span>
+          </label>
+        )}
+      </div>
+      {imgs.length < 12 && <label className="field"><span>Note for the next upload <em className="muted">(optional: what you like about it)</em></span><input value={note} placeholder="e.g. I love the soft pastel sky and the round trees; characters always fill half the frame" onChange={(e) => setNote(e.target.value)} /></label>}
+
+      <div className="brief-box">
+        <div className="row wrap between">
+          <b>Inspiration brief <span className="muted small">· what Claude follows {insp.at ? `· ${insp.edited ? 'edited by you' : 'written by Claude'} ${new Date(insp.at).toLocaleString()}` : ''}</span></b>
+          <div className="row">
+            {briefDirty && <button className="btn small" disabled={busy} onClick={() => act(async () => setDoc(await api.put('/api/world-style/inspiration/brief', { brief })), 'Brief saved')}>Save my edits</button>}
+            {insp.brief && !briefDirty && <Confirm className="btn ghost small" text="Clear the brief? Claude then follows only your written World Style (the screenshots stay)." onYes={() => act(async () => setDoc(await api.del('/api/world-style/inspiration/brief')), 'Brief cleared')}>Clear</Confirm>}
+            <button className="btn small primary" disabled={busy || !claudeOn || !imgs.length} title={claudeOn ? 'One Claude call (reads your World Style + all screenshots)' : 'Connect Claude to use this'} onClick={read}>{busy ? 'Claude is looking…' : insp.brief ? '↻ Read the screenshots again' : '✨ Read the screenshots with Claude'}</button>
+          </div>
+        </div>
+        {insp.stale && <div className="hint warn">The screenshots or notes changed after this brief was written. Read them again to update it.</div>}
+        {insp.brief || briefDirty ? <textarea rows={8} value={brief} onChange={(e) => setBrief(e.target.value)} /> : <p className="small muted">No brief yet. Add screenshots, then click “Read the screenshots with Claude”.</p>}
+        {insp.palette?.length > 0 && <div className="row wrap small"><span className="muted">Colours it took:</span>{insp.palette.map((c) => <span key={c} className="swatch-dot" style={{ background: c }} title={c} />)}</div>}
+        {insp.avoid?.length > 0 && <div className="small"><span className="muted">Never copied:</span> {insp.avoid.join(' · ')}</div>}
+      </div>
+    </div>
+  );
+}
+
+function InspirationTile({ im, setDoc }) {
+  const [act] = useAction();
+  const [note, setNote] = useState(im.note || '');
+  return (
+    <div className="insp-tile">
+      <a href={im.url} target="_blank" rel="noreferrer"><img src={im.url} alt="Inspiration screenshot" /></a>
+      <textarea rows={2} value={note} placeholder="What do you like here?" onChange={(e) => setNote(e.target.value)}
+        onBlur={() => note !== (im.note || '') && act(async () => setDoc(await api.put(`/api/world-style/inspiration/${im.id}`, { note })), 'Note saved')} />
+      <Confirm className="btn ghost tiny" text="Remove this screenshot?" onYes={() => act(async () => setDoc(await api.del(`/api/world-style/inspiration/${im.id}`)), 'Removed')}>Remove</Confirm>
+    </div>
+  );
+}
+
+/** The landscape every video starts with (Stage 4 → Look can change it per project, and the shot editor per shot). */
+function WorldLookPanel({ doc, setDoc, claudeOn }) {
+  const { toast } = useStudio();
+  const [act, busy] = useAction();
+  const L = doc.world_look || {};
+  const set = (p) => act(async () => setDoc(await api.put('/api/world-style/look', p)));
+  const pick = (k, label, labels = {}) => (
+    <label className="field"><span>{label}</span>
+      <select value={L[k] || ''} onChange={(e) => set({ [k]: e.target.value })}>
+        <option value="">App default</option>{LOOK_OPTIONS[k].map((o) => <option key={o} value={o}>{labels[o] || o}</option>)}
+      </select>
+    </label>
+  );
+  return (
+    <div className="card">
+      <div className="section-head">
+        <div>
+          <h3>Landscape for every video</h3>
+          <p className="muted small">Around every scenery the studio builds a <b>landscape</b>: sky, clouds, far hills, trees, flowers and ground. These are your world's defaults. Each project can change them in <b>Stage 4 → 🎨 Look</b>, and each shot in the shot editor.</p>
+        </div>
+        <button className="btn small primary" disabled={busy || !claudeOn} title={claudeOn ? 'One Claude call (World Style + brief + screenshots)' : 'Connect Claude to use this'}
+          onClick={() => act(async () => { const r = await api.post('/api/world-style/look/suggest'); setDoc(r); if (r.why) toast(r.why); })}>✨ Suggest from my World Style</button>
+      </div>
+      <div className="param-grid">
+        {pick('sky', 'Sky', { auto: 'From the lighting', clear: 'Clear', soft: 'Soft pastel', storybook: 'Storybook (lilac & pink)' })}
+        {pick('clouds', 'Clouds')}
+        {pick('hills', 'Far hills')}
+        {pick('trees', 'Trees on the hills')}
+        {pick('dressing', 'Flowers & bushes')}
+        {pick('river', 'River (flowing water)')}
+        {pick('houses', 'Colourful houses')}
+        {pick('wind', 'Wind')}
+        {pick('birds', 'Birds')}
+        {pick('transition', 'Transitions')}
+        <label className="field"><span>Ground colour</span><div className="row"><input type="color" value={L.ground || '#8CCB6E'} onChange={(e) => set({ ground: e.target.value })} />{L.ground ? <button className="btn tiny ghost" onClick={() => set({ ground: '' })}>Auto</button> : <span className="small muted">auto (palette)</span>}</div></label>
+        <label className="field"><span>Hill colour</span><div className="row"><input type="color" value={L.hill_tint || '#6CC45E'} onChange={(e) => set({ hill_tint: e.target.value })} />{L.hill_tint ? <button className="btn tiny ghost" onClick={() => set({ hill_tint: '' })}>Auto</button> : <span className="small muted">auto (palette)</span>}</div></label>
       </div>
     </div>
   );

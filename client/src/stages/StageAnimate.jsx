@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { askReference } from '../reference.jsx';
 import { api, fmtTime } from '../api.js';
 import { useStudio, useAction, Confirm, ReviewBanner, Placeholder } from '../ui.jsx';
 import ScenePlayer from '../engine/ScenePlayer.jsx';
-import { MOTIONS, TRAVEL_MOTIONS, CAMERAS, LIGHTING, SET_SIZE, shotTimes } from '../engine/SceneEngine.js';
+import { MOTIONS, TRAVEL_MOTIONS, CAMERAS, LIGHTING, SET_SIZE, SHOT_SIZES, SIZE_LABEL, PRESET_SIZE, TRANSITIONS, TRANSITION_LABEL, shotTimes } from '../engine/SceneEngine.js';
+import { LOOK_DEFAULTS, LOOK_OPTIONS } from '../engine/Landscape.js';
 import { movesFor, moveById, RIG_LABEL } from '../engine/moveCatalog.js';
 
 const MOTION_HELP = {
@@ -19,8 +21,11 @@ export default function StageAnimate() {
   const [act, busy] = useAction();
   const player = useRef();
   const [note, setNote] = useState('');
+  const [doctor, setDoctor] = useState(null); // { issues, thumbs } from the last preview build
+  const [panel, setPanel] = useState(null);   // which top panel is open: 'direct' | 'look' | null
+  const follow = useRef(true);
   const load = useCallback(() => api.get(`/api/episodes/${episode.id}/scene`).then((s) => { setScene(s); return s; }), [episode.id]);
-  useEffect(() => { load().then((s) => { setSel((x) => x ?? s.shots[0]?.id ?? null); setNote((n) => n || s.director?.message || ''); }); }, [load]);
+  useEffect(() => { load().then((s) => { setSel((x) => x ?? s.shots[0]?.id ?? null); setNote((n) => n || s.director?.message || ''); if (!s.shots.length) setPanel('direct'); }); }, [load]);
 
   const saveTimer = useRef({});
   const patchShot = (id, patch) => {
@@ -29,60 +34,176 @@ export default function StageAnimate() {
     saveTimer.current[id] = setTimeout(() => api.put(`/api/scene-shots/${id}`, patch).then(() => refreshEpisode()).catch((e) => toast(e.message, 'error')), 400);
   };
   const replaceShots = (shots) => { setScene((s) => ({ ...s, shots })); refreshEpisode(); };
+  const lookTimer = useRef(); const lookPending = useRef({});
+  const setLook = (p) => {
+    setScene((s) => ({ ...s, look: { ...(s.look || {}), ...p } }));
+    lookPending.current = { ...lookPending.current, ...p };
+    clearTimeout(lookTimer.current);
+    lookTimer.current = setTimeout(() => { const body = lookPending.current; lookPending.current = {}; api.put(`/api/episodes/${episode.id}/look`, body).then(() => refreshEpisode()).catch((e) => toast(e.message, 'error')); }, 500);
+  };
+  /** Apply Shot Doctor fixes (one or many). Several fixes for the same shot are merged. */
+  const applyFixes = (list) => {
+    const byShot = new Map();
+    for (const it of list) {
+      if (!it.fix) continue;
+      const cur = byShot.get(it.shot_id) || {};
+      byShot.set(it.shot_id, { ...cur, ...it.fix, ...(cur.camera && it.fix.camera ? { camera: { ...cur.camera, ...it.fix.camera } } : {}) });
+    }
+    for (const [id, p] of byShot) patchShot(id, p);
+    toast(`${list.length} fix${list.length === 1 ? '' : 'es'} applied. The preview rebuilds and Shot Doctor checks again.`);
+  };
 
   if (!scene) return <div className="muted">Loading…</div>;
   const times = shotTimes(scene.shots, scene.timing, scene.audio?.duration);
   const shot = scene.shots.find((s) => s.id === sel);
   const idx = scene.shots.findIndex((s) => s.id === sel);
   const timingOk = scene.timing?.approved && scene.timing?.audio_id === episode.master_audio_id;
+  const issues = doctor?.issues || [];
+  const warnCount = (id) => issues.filter((x) => x.shot_id === id && x.level === 'warn').length;
+  const infoCount = (id) => issues.filter((x) => x.shot_id === id && x.level !== 'warn').length;
+  const toggle = (p) => setPanel((x) => (x === p ? null : p));
+  const simplePlan = () => act(async () => { const r = await api.post(`/api/episodes/${episode.id}/scene/propose`, { mode: 'offline', replace: scene.shots.length > 0 }); replaceShots(r.shots); setSel(r.shots[0]?.id); }, 'Simple shot plan made (no AI)');
 
   return (
     <div className="stack">
       <ReviewBanner flagKey="shots" />
       {!timingOk && <div className="alert">Lyric timing isn't approved in Stage 3 yet — shots use provisional times until it is.</div>}
-      <div className="card">
+      {!scene.assets.length && <div className="alert">No approved assets yet — approve characters and scenery in Stage 2.</div>}
+      <div className="card animate-top">
         <div className="section-head">
-          <div><h3>Shot plan</h3><p className="muted small">The shots the preview plays: who is in each shot, where they go, what they do, the camera and the lighting. Write a direction below for Claude to plan it, or edit any shot by hand. Times come from the Stage 3 lyric timing.</p></div>
+          <div><h3>Shot plan</h3><p className="muted small">{scene.shots.length} shot{scene.shots.length === 1 ? '' : 's'} · plan them with Claude or by hand, set the look of the whole video, then watch the preview and let Shot Doctor check it.</p></div>
           <div className="row wrap">
-            {(() => {
-              const run = () => act(async () => { const r = await api.post(`/api/episodes/${episode.id}/scene/propose`, { mode: 'offline', replace: scene.shots.length > 0 }); replaceShots(r.shots); setSel(r.shots[0]?.id); }, 'Simple shot plan made (no AI)');
-              const title = 'Rule-based, no AI: one shot per lyric line';
-              return scene.shots.length
-                ? <Confirm className="btn" disabled={busy} title={title} text="Replace the current shot plan with a simple automatic one (no AI)?" onYes={run}>↻ Simple plan (no AI)…</Confirm>
-                : <button className="btn" disabled={busy} title={title} onClick={run}>Simple plan (no AI)</button>;
-            })()}
+            <button className={`btn ${panel === 'direct' ? 'primary' : ''}`} onClick={() => toggle('direct')}>🎬 Direct with Claude</button>
+            <button className={`btn ${panel === 'look' ? 'primary' : ''}`} onClick={() => toggle('look')}>🎨 Look: landscape & on-screen text</button>
+            {scene.shots.length
+              ? <Confirm className="btn" disabled={busy} title="Rule-based, no AI: one shot per lyric line" text="Replace the current shot plan with a simple automatic one (no AI)?" onYes={simplePlan}>↻ Simple plan (no AI)…</Confirm>
+              : <button className="btn" disabled={busy} onClick={simplePlan}>Simple plan (no AI)</button>}
             <button className="btn" disabled={busy} onClick={() => act(async () => { const s = await api.post(`/api/episodes/${episode.id}/scene-shots`, {}); await load(); setSel(s.id); }, 'Shot added')}>+ Add shot</button>
           </div>
         </div>
-        {!scene.assets.length && <div className="alert">No approved assets yet — approve characters and scenery in Stage 2.</div>}
-        <DirectorPanel scene={scene} episode={episode} note={note} setNote={setNote} claudeOn={claudeOn} busy={busy} reload={load}
+        {panel === 'direct' && <DirectorPanel scene={scene} episode={episode} note={note} setNote={setNote} claudeOn={claudeOn} busy={busy} reload={load}
           send={(revise) => act(async () => {
-            const r = await api.post(`/api/episodes/${episode.id}/scene/propose`, { mode: 'ai', revise, replace: true, message: note.trim() });
+            const reference = await askReference('animate.direct', revise ? 'Change the shot plan from your direction' : 'Make a new shot plan from your direction');
+            if (!reference) return;
+            const r = await api.post(`/api/episodes/${episode.id}/scene/propose`, { mode: 'ai', revise, replace: true, message: note.trim(), reference });
             replaceShots(r.shots); setSel((cur) => (r.shots.some((x) => x.id === cur) ? cur : r.shots[0]?.id));
             await load();
-          }, revise ? 'Claude changed the shot plan — see its response below, then Generate Preview' : 'Claude made a new shot plan — see its response below, then Generate Preview')} />
-        <div className="shot-strip">
-          {times.map((x, i) => (
-            <button key={x.shot.id} className={`shot-chip ${x.shot.id === sel ? 'sel' : ''}`} style={{ flex: Math.max(0.6, x.length) }} onClick={() => { setSel(x.shot.id); player.current?.seek(x.start); }}>
-              <b>{i + 1}. {x.shot.title}</b>
-              <small className="mono">{fmtTime(x.start)}–{fmtTime(x.end)} · lines {(x.shot.line_from ?? 0) + 1}{x.shot.line_to !== x.shot.line_from ? `–${(x.shot.line_to ?? 0) + 1}` : ''}</small>
-            </button>
-          ))}
-        </div>
+          }, revise ? 'Claude changed the shot plan — see its response, then watch the preview' : 'Claude made a new shot plan — see its response, then watch the preview')} />}
+        {panel === 'look' && <LookPanel look={scene.look || {}} title={scene.title} setLook={setLook} />}
       </div>
 
-      <div className="animate-grid">
-        <div className="card">
-          <ScenePlayer ref={player} scene={scene} lines={scene.timing?.lines || []} onShot={(k) => { const s = times[k]?.shot; if (s) setSel((cur) => cur); }} />
+      <div className="animate-work">
+        <div className="animate-left">
+          <div className="card">
+            <ScenePlayer ref={player} scene={scene} lines={scene.timing?.lines || []} onBuilt={setDoctor}
+              onShot={(k) => { const s = times[k]?.shot; if (s && follow.current) setSel(s.id); }} />
+            <div className="row wrap between">
+              <label className="check small"><input type="checkbox" defaultChecked onChange={(e) => { follow.current = e.target.checked; }} /> Select the shot that is playing</label>
+              <span className="small muted kbd-hint"><kbd>Space</kbd> play / pause · <kbd>←</kbd> <kbd>→</kbd> previous / next shot · <kbd>F</kbd> full screen</span>
+            </div>
+          </div>
+          <div className="shot-strip thumbs">
+            {times.map((x, i) => (
+              <button key={x.shot.id} className={`shot-chip ${x.shot.id === sel ? 'sel' : ''}`} onClick={() => { setSel(x.shot.id); player.current?.seek(x.start + 0.01); }} title={x.shot.title}>
+                {doctor?.thumbs?.[x.shot.id] ? <img src={doctor.thumbs[x.shot.id]} alt="" /> : <span className="thumb-empty">{i + 1}</span>}
+                <b>{i + 1}. {x.shot.title}</b>
+                <small className="mono">{fmtTime(x.start)} · {x.length.toFixed(1)} s</small>
+                {warnCount(x.shot.id) > 0 && <span className="badge warn" title="Shot Doctor problems">{warnCount(x.shot.id)}</span>}
+                {!warnCount(x.shot.id) && infoCount(x.shot.id) > 0 && <span className="badge info" title="Shot Doctor tips">{infoCount(x.shot.id)}</span>}
+              </button>
+            ))}
+          </div>
+          <ShotDoctor doctor={doctor} times={times} onFix={applyFixes} onSelect={(id) => { setSel(id); const t = times.find((x) => x.shot.id === id); if (t) player.current?.seek(t.start + t.length / 2); }} />
         </div>
         {shot ? (
           <ShotEditor key={shot.id} shot={shot} index={idx} total={scene.shots.length} scene={scene} times={times[idx]} patch={(p) => patchShot(shot.id, p)}
+            issues={issues.filter((x) => x.shot_id === shot.id)} onFix={applyFixes}
             onMerge={() => act(async () => replaceShots(await api.post(`/api/scene-shots/${shot.id}/merge-next`)), 'Merged with the next shot')}
             onSplit={() => act(async () => replaceShots(await api.post(`/api/scene-shots/${shot.id}/split`)), 'Shot split')}
             onDelete={() => act(async () => { const r = await api.del(`/api/scene-shots/${shot.id}`); replaceShots(r); setSel(r[0]?.id ?? null); }, 'Shot deleted')}
             onMove={(d) => act(async () => { const ids = scene.shots.map((s) => s.id); const j = idx + d; [ids[idx], ids[j]] = [ids[j], ids[idx]]; replaceShots(await api.post(`/api/episodes/${episode.id}/scene-shots/reorder`, { ids })); })}
             reloadScene={load} />
         ) : <div className="card muted">Select or add a shot.</div>}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Shot Doctor: after each preview build the engine checks every shot like a director would (characters too small,
+ * cut off, hidden, back to the camera, mostly empty sky, the same framing twice, long still shots) and offers fixes.
+ */
+export function ShotDoctor({ doctor, times, onFix, onSelect, compact = false }) {
+  if (!doctor) return <div className="card doctor muted small">🩺 <b>Shot Doctor</b> checks every shot after you click <b>Generate Preview</b>.</div>;
+  const list = doctor.issues || [];
+  const warns = list.filter((x) => x.level === 'warn'); const tips = list.filter((x) => x.level !== 'warn');
+  const num = (id) => times.findIndex((x) => x.shot.id === id) + 1;
+  return (
+    <div className="card doctor">
+      <div className="section-head">
+        <div><h4 style={{ margin: 0 }}>🩺 Shot Doctor</h4>
+          <span className="small muted">{list.length ? `${warns.length} problem${warns.length === 1 ? '' : 's'} · ${tips.length} tip${tips.length === 1 ? '' : 's'}` : 'Every shot looks good.'}</span></div>
+        {onFix && warns.some((x) => x.fix) && <button className="btn small primary" onClick={() => onFix(warns.filter((x) => x.fix))}>Fix all problems ({warns.filter((x) => x.fix).length})</button>}
+      </div>
+      {list.length > 0 && (
+        <ul className={`doctor-list ${compact ? 'compact' : ''}`}>
+          {[...warns, ...tips].map((x, i) => (
+            <li key={i} className={x.level}>
+              {onSelect ? <button className="link" onClick={() => onSelect(x.shot_id)}>Shot {num(x.shot_id)}</button> : <b>Shot {num(x.shot_id)}</b>}
+              <span>{x.text}</span>
+              {onFix && x.fix && <button className="btn tiny" onClick={() => onFix([x])}>{x.fixLabel || 'Fix'}</button>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/** The look of the whole video: the landscape around the scenery, and what is written on the picture. */
+function LookPanel({ look, title, setLook }) {
+  const L = { ...LOOK_DEFAULTS, ...look };
+  const sel = (k, label, labels = {}) => (
+    <label className="field"><span>{label}</span>
+      <select value={L[k]} onChange={(e) => setLook({ [k]: e.target.value })}>{LOOK_OPTIONS[k].map((o) => <option key={o} value={o}>{labels[o] || o}</option>)}</select>
+    </label>
+  );
+  return (
+    <div className="look-panel">
+      <div className="explain">
+        <b>Scenery</b> is the set your characters stand on (a meadow, a lane, a bedroom), made in Stage 2.
+        The <b>landscape</b> is everything around it out to the horizon: sky, clouds, far hills, trees, flowers and the ground.
+        The app builds the landscape for every shot from your World Style colours, so a small scenery model never floats in empty space.
+        These settings apply to the whole video and start from <b>World Style → Landscape for every video</b>; any shot can override them (shot editor → Landscape for this shot).
+      </div>
+      <div className="look-grid">
+        <div>
+          <div className="row between"><h4 style={{ margin: 0 }}>Landscape</h4><button className="btn tiny ghost" title="Forget this project's landscape choices and use the World Style defaults" onClick={() => setLook({ sky: '', clouds: '', hills: '', trees: '', dressing: '', ground: '', hill_tint: '', transition: '' })}>Use world defaults</button></div>
+          <div className="param-grid">
+            {sel('sky', 'Sky', { auto: 'From the lighting', clear: 'Clear', soft: 'Soft pastel', storybook: 'Storybook (lilac & pink)' })}
+            {sel('clouds', 'Clouds')}
+            {sel('hills', 'Far hills')}
+            {sel('trees', 'Trees on the hills')}
+            {sel('dressing', 'Flowers & bushes around the scenery')}
+            {sel('river', 'River (flowing water)', { none: 'None', behind: 'Behind the play area', winding: 'Winding' })}
+            {sel('houses', 'Colourful houses')}
+            {sel('wind', 'Wind (swaying trees & flowers)')}
+            {sel('birds', 'Birds in the sky')}
+            <label className="field"><span>Ground colour</span><div className="row"><input type="color" value={L.ground || '#8CCB6E'} onChange={(e) => setLook({ ground: e.target.value })} />{L.ground ? <button className="btn tiny ghost" onClick={() => setLook({ ground: '' })}>Auto</button> : <span className="small muted">auto (World Style)</span>}</div></label>
+            <label className="field"><span>Hill colour</span><div className="row"><input type="color" value={L.hill_tint || '#6CC45E'} onChange={(e) => setLook({ hill_tint: e.target.value })} />{L.hill_tint ? <button className="btn tiny ghost" onClick={() => setLook({ hill_tint: '' })}>Auto</button> : <span className="small muted">auto (World Style)</span>}</div></label>
+          </div>
+        </div>
+        <div>
+          <h4>On the picture</h4>
+          <label className="check"><input type="checkbox" checked={L.title_card} onChange={(e) => setLook({ title_card: e.target.checked })} /> Title card during the intro</label>
+          {L.title_card && <label className="field"><span>Title text</span><input value={look.title_text ?? ''} placeholder={title} onChange={(e) => setLook({ title_text: e.target.value })} /></label>}
+          <label className="check"><input type="checkbox" checked={L.end_card} onChange={(e) => setLook({ end_card: e.target.checked })} /> End card during the outro</label>
+          {L.end_card && <label className="field"><span>End card text</span><input value={L.end_text} onChange={(e) => setLook({ end_text: e.target.value })} /></label>}
+          <label className="check"><input type="checkbox" checked={L.karaoke} onChange={(e) => setLook({ karaoke: e.target.checked })} /> Karaoke lyrics (words light up as they are sung)</label>
+          <label className="check"><input type="checkbox" checked={L.fade_in_out} onChange={(e) => setLook({ fade_in_out: e.target.checked })} /> Fade in at the start, fade out at the end</label>
+          {sel('transition', 'Transitions between shots', TRANSITION_LABEL)}
+          <p className="small muted">Auto: a dissolve when the song moves to a new section (verse → chorus), an iris when the place changes, a cut otherwise. The title and end cards need an instrumental intro / outro of at least 1.2 s (Stage 3 timing). Caption font, size and colours: Channel Identity.</p>
+        </div>
       </div>
     </div>
   );
@@ -209,20 +330,20 @@ function DirectorPanel({ scene, episode, note, setNote, claudeOn, busy, send, re
       </p>
       {busy && <div className="hint">Claude is reading your direction and planning the shots…</div>}
       {last && (
-        <div className="director-result">
-          <div className="small muted">Claude’s response · {last.mode === 'change' ? 'changed the plan' : 'new plan'} · {new Date(last.at).toLocaleString()}</div>
+        <details className="director-result" open={Date.now() - new Date(last.at).getTime() < 10 * 60 * 1000}>
+          <summary className="small muted">Claude’s response · {last.mode === 'change' ? 'changed the plan' : 'new plan'} · {new Date(last.at).toLocaleString()} <em>(click to show / hide)</em></summary>
           {last.reply && <p>{last.reply}</p>}
           {last.did?.length > 0 && <><b className="small">Put into the plan</b><ul className="small">{last.did.map((x, i) => <li key={i}>✓ {x}</li>)}</ul></>}
           {last.cannot?.length > 0 && <><b className="small warn">Couldn’t do</b><ul className="small warn">{last.cannot.map((x, i) => <li key={i}>✗ {x}</li>)}</ul></>}
           <Proposals key={last.at} episode={episode} director={scene.director} reload={reload} />
-        </div>
+        </details>
       )}
       <FollowUp episode={episode} director={scene.director} reload={reload} />
     </div>
   );
 }
 
-function ShotEditor({ shot, index, total, scene, times, patch, onMerge, onSplit, onDelete, onMove, reloadScene }) {
+function ShotEditor({ shot, index, total, scene, times, patch, onMerge, onSplit, onDelete, onMove, reloadScene, issues = [], onFix }) {
   const lines = scene.lines || [];
   const settings = scene.assets.filter((a) => a.kind === 'location');
   const actorsAvail = scene.assets.filter((a) => a.kind !== 'location');
@@ -246,6 +367,12 @@ function ShotEditor({ shot, index, total, scene, times, patch, onMerge, onSplit,
           <Confirm className="btn ghost tiny" text="Delete shot?" onYes={onDelete}>✕</Confirm>
         </div>
       </div>
+      {issues.length > 0 && (
+        <ul className="doctor-list compact">
+          {issues.map((x, i) => <li key={i} className={x.level}><span>🩺 {x.text}</span>{x.fix && onFix && <button className="btn tiny" onClick={() => onFix([x])}>{x.fixLabel || 'Fix'}</button>}</li>)}
+        </ul>
+      )}
+      {lines[shot.line_from ?? 0] && <p className="small muted shot-lyric">♪ {lines.slice(shot.line_from ?? 0, (shot.line_to ?? shot.line_from ?? 0) + 1).map((l) => l.text).join(' / ')}</p>}
       <div className="grid2">
         <label className="field"><span>Lyric lines</span>
           <div className="row">
@@ -266,26 +393,30 @@ function ShotEditor({ shot, index, total, scene, times, patch, onMerge, onSplit,
           </select>
         </label>
         <label className="field"><span>Lighting</span>
-          <select value={shot.lighting?.preset || 'day'} onChange={(e) => patch({ lighting: { preset: e.target.value } })}>{Object.keys(LIGHTING).map((k) => <option key={k}>{k}</option>)}</select>
+          <select value={shot.lighting?.preset || 'day'} onChange={(e) => patch({ lighting: { ...(shot.lighting || {}), preset: e.target.value } })}>{Object.keys(LIGHTING).map((k) => <option key={k}>{k}</option>)}</select>
         </label>
       </div>
 
       {shot.setting?.card_id && <>
-        <h4>Landscape <em className="muted small">— characters stand on its surface automatically</em></h4>
+        <h4>Scenery placement <em className="muted small">— characters stand on its surface automatically</em></h4>
         <div className="param-grid">
-          <Slider label="Landscape size" value={shot.setting.scale ?? 1} min={0.4} max={3} step={0.05} fmt={(v) => `${Math.round(v * SET_SIZE)} m`} onChange={(v) => patch({ setting: { ...shot.setting, scale: v } })} />
-          <Slider label="Turn landscape" value={shot.setting.rot_y ?? 0} min={-3.14} max={3.14} step={0.05} fmt={(v) => `${Math.round(v * 57.3)}°`} onChange={(v) => patch({ setting: { ...shot.setting, rot_y: v } })} />
+          <Slider label="Scenery size" value={shot.setting.scale ?? 1} min={0.4} max={3} step={0.05} fmt={(v) => `${Math.round(v * SET_SIZE)} m`} onChange={(v) => patch({ setting: { ...shot.setting, scale: v } })} />
+          <Slider label="Turn scenery" value={shot.setting.rot_y ?? 0} min={-3.14} max={3.14} step={0.05} fmt={(v) => `${Math.round(v * 57.3)}°`} onChange={(v) => patch({ setting: { ...shot.setting, rot_y: v } })} />
           {['Shift X', 'Sink / raise', 'Shift Z'].map((L, i) => <Slider key={L} label={L} value={shot.setting.offset?.[i] ?? 0} min={i === 1 ? -6 : -10} max={i === 1 ? 2 : 10} onChange={(v) => { const o = [...(shot.setting.offset || [0, 0, 0])]; o[i] = v; patch({ setting: { ...shot.setting, offset: o } }); }} />)}
         </div>
       </>}
 
+      <ShotLandscape shot={shot} scene={scene} patch={patch} />
+
       <h4>Camera</h4>
       <div className="param-grid">
-        <label className="field"><span>Move</span><select value={cam.preset || 'wide'} onChange={(e) => patch({ camera: { ...cam, preset: e.target.value } })}>{CAMERAS.map((c) => <option key={c}>{c}</option>)}</select></label>
-        {['closeup', 'follow'].includes(cam.preset) && <label className="field"><span>Follow</span><select value={cam.target ?? 0} onChange={(e) => patch({ camera: { ...cam, target: Number(e.target.value) } })}>{actors.map((x, i) => <option key={i} value={i}>{scene.assets.find((s) => s.card_id === x.card_id)?.name || `Actor ${i + 1}`}</option>)}</select></label>}
+        <label className="field"><span>Camera move</span><select value={cam.preset || 'wide'} onChange={(e) => patch({ camera: { ...cam, preset: e.target.value } })}>{CAMERAS.map((c) => <option key={c} value={c}>{CAMERA_LABEL[c] || c}</option>)}</select></label>
+        <label className="field"><span>Shot size</span><select value={cam.size || 'auto'} onChange={(e) => patch({ camera: { ...cam, size: e.target.value } })}>{SHOT_SIZES.map((z) => <option key={z} value={z}>{z === 'auto' ? `Auto (${PRESET_SIZE[cam.preset || 'wide']})` : SIZE_LABEL[z]}</option>)}</select></label>
+        <label className="field"><span>Transition into this shot</span><select value={cam.transition || 'auto'} disabled={index === 0} onChange={(e) => patch({ camera: { ...cam, transition: e.target.value } })}>{TRANSITIONS.map((z) => <option key={z} value={z}>{z === 'auto' ? 'Project default' : TRANSITION_LABEL[z]}</option>)}</select></label>
+        {(['closeup', 'follow'].includes(cam.preset) || ['medium', 'closeup'].includes(cam.size)) && <label className="field"><span>Who the camera is on</span><select value={cam.target ?? 0} onChange={(e) => patch({ camera: { ...cam, target: Number(e.target.value) } })}>{actors.map((x, i) => <option key={i} value={i}>{scene.assets.find((s) => s.card_id === x.card_id)?.name || `Actor ${i + 1}`}</option>)}</select></label>}
         <Slider label="Lens (FOV)" value={cam.fov ?? 40} min={20} max={70} step={1} fmt={(v) => `${v}°`} onChange={(v) => patch({ camera: { ...cam, fov: v } })} />
         <Slider label="Distance" value={cam.distance ?? 1} min={0.5} max={2} step={0.05} fmt={(v) => `×${v.toFixed(2)}`} onChange={(v) => patch({ camera: { ...cam, distance: v } })} />
-        <Slider label="Height" value={cam.height ?? 0} min={-1} max={4} onChange={(v) => patch({ camera: { ...cam, height: v } })} />
+        <Slider label="Camera height" value={cam.height ?? 0} min={-1} max={4} onChange={(v) => patch({ camera: { ...cam, height: v } })} />
         {cam.preset === 'pan' && <Slider label="Pan amount" value={cam.amount ?? 1.5} min={0} max={6} onChange={(v) => patch({ camera: { ...cam, amount: v } })} />}
       </div>
 
@@ -298,6 +429,15 @@ function ShotEditor({ shot, index, total, scene, times, patch, onMerge, onSplit,
       <div className="obj-chips">{actors.map((x, i) => <button key={i} className={`chip ${i === ai ? 'on' : ''}`} onClick={() => setAi(i)}>{scene.assets.find((s) => s.card_id === x.card_id)?.name || 'Missing asset'}</button>)}</div>
       {a && (
         <div className="obj-editor">
+          <div className="row wrap quick-place">
+            <span className="small muted">Quick:</span>
+            {[['◀ Left', -2.5], ['Centre', 0], ['Right ▶', 2.5]].map(([L, x]) => <button key={L} className="btn tiny" onClick={() => setActor(ai, { pos: [x, a.pos?.[1] ?? 0, a.pos?.[2] ?? 0.5] })}>{L}</button>)}
+            <button className="btn tiny" onClick={() => setActor(ai, { pos: [a.pos?.[0] ?? 0, a.pos?.[1] ?? 0, 1.2] })}>Front</button>
+            <button className="btn tiny" onClick={() => setActor(ai, { pos: [a.pos?.[0] ?? 0, a.pos?.[1] ?? 0, -2] })}>Back</button>
+            <button className="btn tiny" title="Turn toward the camera" onClick={() => setActor(ai, { rot: [0, 0, 0] })}>☺ Face camera</button>
+            <button className="btn tiny" title="Put it in the sky (sun, moon, kite, balloons)" onClick={() => setActor(ai, { pos: [a.pos?.[0] ?? 2, 3.2, -4] })}>☁ In the sky</button>
+            <button className="btn tiny" title="Put it back on the ground" onClick={() => setActor(ai, { pos: [a.pos?.[0] ?? 0, 0, Math.min(1.2, a.pos?.[2] ?? 0.5)] })}>⬇ On the ground</button>
+          </div>
           <div className="param-grid">
             {['X', 'Y', 'Z'].map((L, i) => <Slider key={L} label={i === 1 ? 'Height above ground (2+ = in the sky)' : `Position ${L}`} value={a.pos?.[i] ?? 0} min={i === 1 ? -2 : -10} max={i === 1 ? 8 : 10} onChange={(v) => { const p = [...(a.pos || [0, 0, 0])]; p[i] = v; setActor(ai, { pos: p }); }} />)}
             <Slider label="Turn" value={a.rot?.[1] ?? 0} min={-3.14} max={3.14} step={0.05} fmt={(v) => `${Math.round(v * 57.3)}°`} onChange={(v) => setActor(ai, { rot: [0, v, 0] })} />
@@ -318,6 +458,7 @@ function ShotEditor({ shot, index, total, scene, times, patch, onMerge, onSplit,
               <Slider label="Turns" value={a.motion.turns ?? 1} min={0.25} max={3} step={0.25} fmt={(v) => v.toFixed(2)} onChange={(v) => setMotion(ai, { turns: v })} />
             </>}
           </div>
+          {TRAVEL_MOTIONS.includes(a.motion?.type) && <label className="check small"><input type="checkbox" checked={a.face_travel !== false} onChange={(e) => setActor(ai, { face_travel: e.target.checked ? undefined : false })} /> Turns to face where it goes <em className="muted">(untick for riders and vehicles that should keep facing the camera)</em></label>}
           {TRAVEL_MOTIONS.includes(a.motion?.type) && <div className="param-grid"><Slider label="Set off after (s)" value={a.motion.start ?? 0} min={0} max={Math.max(1, Math.floor(times?.length || 10))} step={0.1} onChange={(v) => setMotion(ai, { start: v })} /></div>}
           <BodyActions actor={a} index={ai} actors={actors} asset={asset} scene={scene} length={times?.length || 0} onChange={(p) => setActor(ai, p)} />
           <ClipPicker actor={a} asset={asset} onChange={(clip) => setActor(ai, { clip })} reloadScene={reloadScene} />
@@ -433,6 +574,31 @@ function ClipPicker({ actor, asset, onChange, reloadScene }) {
           </div>
         </>
       )}
+    </details>
+  );
+}
+
+const CAMERA_LABEL = { wide: 'Still (wide)', 'tilt-up': 'Tilt up (look up)', pan: 'Pan (slide sideways)', 'dolly-in': 'Dolly in (move closer)', closeup: 'Close-up (on one)', follow: 'Follow (track one)', orbit: 'Orbit (circle around)', group: 'Group (keep everyone in)' };
+
+/** This shot's landscape: the project look, or this shot's own sky / clouds / hills / trees / dressing. Stored in lighting.look. */
+function ShotLandscape({ shot, scene, patch }) {
+  const own = shot.lighting?.look || {};
+  const base = { ...LOOK_DEFAULTS, ...(scene.look || {}) };
+  const set = (k, v) => { const n = { ...own }; if (v === 'project') delete n[k]; else n[k] = v; patch({ lighting: { ...(shot.lighting || { preset: 'day' }), look: n } }); };
+  const keys = [['sky', 'Sky'], ['clouds', 'Clouds'], ['hills', 'Far hills'], ['trees', 'Trees'], ['dressing', 'Flowers & bushes'], ['river', 'River'], ['houses', 'Houses'], ['wind', 'Wind'], ['birds', 'Birds']];
+  const changed = keys.filter(([k]) => own[k]).length;
+  return (
+    <details className="tool">
+      <summary>Landscape for this shot {changed ? `· ${changed} change${changed === 1 ? '' : 's'}` : '· same as the project'} <span className="muted small">(sky, clouds, hills… around the scenery)</span></summary>
+      <div className="param-grid">
+        {keys.map(([k, label]) => (
+          <label key={k} className="field"><span>{label}</span>
+            <select value={own[k] || 'project'} onChange={(e) => set(k, e.target.value)}>
+              <option value="project">Project ({base[k]})</option>{LOOK_OPTIONS[k].map((o) => <option key={o} value={o}>{o}</option>)}
+            </select>
+          </label>
+        ))}
+      </div>
     </details>
   );
 }

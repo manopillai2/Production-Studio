@@ -1,0 +1,595 @@
+{
+ "duration": 212.36,
+ "sections": [
+  {
+   "type": "verse",
+   "label": "Verse 1 – Slow and Fast",
+   "n": 4
+  },
+  {
+   "type": "chorus",
+   "label": "Chorus",
+   "n": 4
+  },
+  {
+   "type": "verse",
+   "label": "Verse 2 – Up and Down",
+   "n": 4
+  },
+  {
+   "type": "chorus",
+   "label": "Chorus",
+   "n": 4
+  },
+  {
+   "type": "verse",
+   "label": "Verse 2 (again)",
+   "n": 4
+  },
+  {
+   "type": "chorus",
+   "label": "Chorus",
+   "n": 4
+  },
+  {
+   "type": "verse",
+   "label": "Verse 3 – High and Low",
+   "n": 4
+  },
+  {
+   "type": "chorus",
+   "label": "Chorus",
+   "n": 4
+  },
+  {
+   "type": "verse",
+   "label": "Verse 4 – Yes and No, Hello and Goodbye",
+   "n": 4
+  },
+  {
+   "type": "chorus",
+   "label": "Chorus",
+   "n": 4
+  },
+  {
+   "type": "chorus",
+   "label": "Chorus (slow)",
+   "n": 4
+  },
+  {
+   "type": "chorus",
+   "label": "Final Chorus",
+   "n": 4
+  }
+ ],
+ "lines": [
+  {
+   "i": 0,
+   "type": "verse",
+   "label": "Verse 1 – Slow and Fast",
+   "section": 0,
+   "text": "Walking slowly, slow, slow, slow,",
+   "matched": 5,
+   "total": 5,
+   "start": 12.14,
+   "end": 14.79
+  },
+  {
+   "i": 1,
+   "type": "verse",
+   "label": "Verse 1 – Slow and Fast",
+   "section": 0,
+   "text": "Past the flowers, here we go!",
+   "matched": 6,
+   "total": 6,
+   "start": 14.88,
+   "end": 17.19
+  },
+  {
+   "i": 2,
+   "type": "verse",
+   "label": "Verse 1 – Slow and Fast",
+   "section": 0,
+   "text": "Now we're running, fast, fast, fast!",
+   "matched": 6,
+   "total": 6,
+   "start": 17.3,
+   "end": 19.67
+  },
+  {
+   "i": 3,
+   "type": "verse",
+   "label": "Verse 1 – Slow and Fast",
+   "section": 0,
+   "text": "Round the garden, zooming past!",
+   "matched": 4,
+   "total": 5,
+   "start": 19.76,
+   "end": 22.03
+  },
+  {
+   "i": 4,
+   "type": "chorus",
+   "label": "Chorus",
+   "section": 1,
+   "text": "Slow and fast, and up and down,",
+   "matched": 7,
+   "total": 7,
+   "start": 22.12,
+   "end": 24.43
+  },
+  {
+   "i": 5,
+   "type": "chorus",
+   "label": "Chorus",
+   "section": 1,
+   "text": "High and low, now spin around!",
+   "matched": 6,
+   "total": 6,
+   "start": 24.5,
+   "end": 26.63
+  },
+  {
+   "i": 6,
+   "type": "chorus",
+   "label": "Chorus",
+   "section": 1,
+   "text": "Yes and no, hello, goodbye,",
+   "matched": 5,
+   "total": 5,
+   "start": 26.8,
+   "end": 28.7
+  },
+  {
+   "i": 7,
+   "type": "chorus",
+   "label": "Chorus",
+   "section": 1,
+   "text": "Come on, copy, give it a try!",
+   "matched": 7,
+   "total": 7,
+   "start": 28.64,
+   "end": 31.87
+  },
+  {
+   "i": 8,
+   "type": "verse",
+   "label": "Verse 2 – Up and Down",
+   "section": 2,
+   "text": "Mira jumps up, up, up, up!",
+   "matched": 6,
+   "total": 6,
+   "start": 36.18,
+   "end": 38.77
+  },
+  {
+   "i": 9,
+   "type": "verse",
+   "label": "Verse 2 – Up and Down",
+   "section": 2,
+   "text": "Mango wags, a happy pup!",
+   "matched": 5,
+   "total": 5,
+   "start": 38.86,
+   "end": 40.78
+  },
+  {
+   "i": 10,
+   "type": "verse",
+   "label": "Verse 2 – Up and Down",
+   "section": 2,
+   "text": "Now bow down, down to the ground,",
+   "matched": 7,
+   "total": 7,
+   "start": 40.72,
+   "end": 43.26
+  },
+  {
+   "i": 11,
+   "type": "verse",
+   "label": "Verse 2 – Up and Down",
+   "section": 2,
+   "text": "Up float balloons, pink and round!",
+   "matched": 6,
+   "total": 6,
+   "start": 43.2,
+   "end": 45.76
+  },
+  {
+   "i": 12,
+   "type": "chorus",
+   "label": "Chorus",
+   "section": 3,
+   "text": "Slow and fast, and up and down,",
+   "matched": 7,
+   "total": 7,
+   "start": 45.7,
+   "end": 48.16
+  },
+  {
+   "i": 13,
+   "type": "chorus",
+   "label": "Chorus",
+   "section": 3,
+   "text": "High and low, now spin around!",
+   "matched": 6,
+   "total": 6,
+   "start": 48.1,
+   "end": 50.4
+  },
+  {
+   "i": 14,
+   "type": "chorus",
+   "label": "Chorus",
+   "section": 3,
+   "text": "Yes and no, hello, goodbye,",
+   "matched": 5,
+   "total": 5,
+   "start": 50.34,
+   "end": 52.8
+  },
+  {
+   "i": 15,
+   "type": "chorus",
+   "label": "Chorus",
+   "section": 3,
+   "text": "Come on, copy, give it a try!",
+   "matched": 7,
+   "total": 7,
+   "start": 52.74,
+   "end": 55.73
+  },
+  {
+   "i": 16,
+   "type": "verse",
+   "label": "Verse 2 (again)",
+   "section": 4,
+   "text": "Mira jumps up, up, up, up!",
+   "matched": 6,
+   "total": 6,
+   "start": 60.22,
+   "end": 62.66
+  },
+  {
+   "i": 17,
+   "type": "verse",
+   "label": "Verse 2 (again)",
+   "section": 4,
+   "text": "Mango wags, a happy pup!",
+   "matched": 5,
+   "total": 5,
+   "start": 62.6,
+   "end": 64.76
+  },
+  {
+   "i": 18,
+   "type": "verse",
+   "label": "Verse 2 (again)",
+   "section": 4,
+   "text": "Now bow down, down to the ground,",
+   "matched": 7,
+   "total": 7,
+   "start": 64.7,
+   "end": 67.28
+  },
+  {
+   "i": 19,
+   "type": "verse",
+   "label": "Verse 2 (again)",
+   "section": 4,
+   "text": "Up float balloons, pink and round!",
+   "matched": 6,
+   "total": 6,
+   "start": 67.22,
+   "end": 70.29
+  },
+  {
+   "i": 20,
+   "type": "chorus",
+   "label": "Chorus",
+   "section": 5,
+   "text": "Slow and fast, and up and down,",
+   "matched": 7,
+   "total": 7,
+   "start": 71.96,
+   "end": 74.6
+  },
+  {
+   "i": 21,
+   "type": "chorus",
+   "label": "Chorus",
+   "section": 5,
+   "text": "High and low, now spin around!",
+   "matched": 6,
+   "total": 6,
+   "start": 74.54,
+   "end": 76.82
+  },
+  {
+   "i": 22,
+   "type": "chorus",
+   "label": "Chorus",
+   "section": 5,
+   "text": "Yes and no, hello, goodbye,",
+   "matched": 5,
+   "total": 5,
+   "start": 76.76,
+   "end": 79.24
+  },
+  {
+   "i": 23,
+   "type": "chorus",
+   "label": "Chorus",
+   "section": 5,
+   "text": "Come on, copy, give it a try!",
+   "matched": 7,
+   "total": 7,
+   "start": 79.18,
+   "end": 82.17
+  },
+  {
+   "i": 24,
+   "type": "verse",
+   "label": "Verse 3 – High and Low",
+   "section": 6,
+   "text": "Red kite flying high, so high,",
+   "matched": 6,
+   "total": 6,
+   "start": 83.9,
+   "end": 86.7
+  },
+  {
+   "i": 25,
+   "type": "verse",
+   "label": "Verse 3 – High and Low",
+   "section": 6,
+   "text": "Dancing in the big blue sky!",
+   "matched": 6,
+   "total": 6,
+   "start": 86.64,
+   "end": 88.94
+  },
+  {
+   "i": 26,
+   "type": "verse",
+   "label": "Verse 3 – High and Low",
+   "section": 6,
+   "text": "Swooping low, low, low it goes,",
+   "matched": 6,
+   "total": 6,
+   "start": 88.88,
+   "end": 91.42
+  },
+  {
+   "i": 27,
+   "type": "verse",
+   "label": "Verse 3 – High and Low",
+   "section": 6,
+   "text": "Mango sniffs low with his nose!",
+   "matched": 5,
+   "total": 6,
+   "start": 91.36,
+   "end": 93.72
+  },
+  {
+   "i": 28,
+   "type": "chorus",
+   "label": "Chorus",
+   "section": 7,
+   "text": "Slow and fast, and up and down,",
+   "matched": 7,
+   "total": 7,
+   "start": 93.66,
+   "end": 96.16
+  },
+  {
+   "i": 29,
+   "type": "chorus",
+   "label": "Chorus",
+   "section": 7,
+   "text": "High and low, now spin around!",
+   "matched": 6,
+   "total": 6,
+   "start": 96.1,
+   "end": 98.38
+  },
+  {
+   "i": 30,
+   "type": "chorus",
+   "label": "Chorus",
+   "section": 7,
+   "text": "Yes and no, hello, goodbye,",
+   "matched": 5,
+   "total": 5,
+   "start": 98.32,
+   "end": 100.84
+  },
+  {
+   "i": 31,
+   "type": "chorus",
+   "label": "Chorus",
+   "section": 7,
+   "text": "Come on, copy, give it a try!",
+   "matched": 7,
+   "total": 7,
+   "start": 100.78,
+   "end": 103.36
+  },
+  {
+   "i": 32,
+   "type": "verse",
+   "label": "Verse 4 – Yes and No, Hello and Goodbye",
+   "section": 8,
+   "text": "Yes, yes, yes, we nod our heads,",
+   "matched": 7,
+   "total": 7,
+   "start": 103.3,
+   "end": 105.72
+  },
+  {
+   "i": 33,
+   "type": "verse",
+   "label": "Verse 4 – Yes and No, Hello and Goodbye",
+   "section": 8,
+   "text": "No, no, no, we shake instead!",
+   "matched": 6,
+   "total": 6,
+   "start": 105.66,
+   "end": 108.14
+  },
+  {
+   "i": 34,
+   "type": "verse",
+   "label": "Verse 4 – Yes and No, Hello and Goodbye",
+   "section": 8,
+   "text": "Wave hello, the day was fun,",
+   "matched": 6,
+   "total": 6,
+   "start": 108.08,
+   "end": 110.52
+  },
+  {
+   "i": 35,
+   "type": "verse",
+   "label": "Verse 4 – Yes and No, Hello and Goodbye",
+   "section": 8,
+   "text": "Wave goodbye to the setting sun!",
+   "matched": 6,
+   "total": 6,
+   "start": 110.46,
+   "end": 113.23
+  },
+  {
+   "i": 36,
+   "type": "chorus",
+   "label": "Chorus",
+   "section": 9,
+   "text": "Slow and fast, and up and down,",
+   "matched": 7,
+   "total": 7,
+   "start": 115.2,
+   "end": 117.76
+  },
+  {
+   "i": 37,
+   "type": "chorus",
+   "label": "Chorus",
+   "section": 9,
+   "text": "High and low, now spin around!",
+   "matched": 6,
+   "total": 6,
+   "start": 117.7,
+   "end": 120
+  },
+  {
+   "i": 38,
+   "type": "chorus",
+   "label": "Chorus",
+   "section": 9,
+   "text": "Yes and no, hello, goodbye,",
+   "matched": 5,
+   "total": 5,
+   "start": 119.94,
+   "end": 122.44
+  },
+  {
+   "i": 39,
+   "type": "chorus",
+   "label": "Chorus",
+   "section": 9,
+   "text": "Come on, copy, give it a try!",
+   "matched": 7,
+   "total": 7,
+   "start": 122.38,
+   "end": 125.49
+  },
+  {
+   "i": 40,
+   "type": "chorus",
+   "label": "Chorus (slow)",
+   "section": 10,
+   "text": "Slow and fast, and up and down,",
+   "matched": 7,
+   "total": 7,
+   "start": 134.38,
+   "end": 137.26
+  },
+  {
+   "i": 41,
+   "type": "chorus",
+   "label": "Chorus (slow)",
+   "section": 10,
+   "text": "High and low, now spin around!",
+   "matched": 6,
+   "total": 6,
+   "start": 137.2,
+   "end": 141.89
+  },
+  {
+   "i": 42,
+   "type": "chorus",
+   "label": "Chorus (slow)",
+   "section": 10,
+   "text": "Yes and no, hello, goodbye,",
+   "matched": 5,
+   "total": 5,
+   "start": 143.7,
+   "end": 146.48
+  },
+  {
+   "i": 43,
+   "type": "chorus",
+   "label": "Chorus (slow)",
+   "section": 10,
+   "text": "Come on, copy, give it a try!",
+   "matched": 7,
+   "total": 7,
+   "start": 146.42,
+   "end": 153.89
+  },
+  {
+   "i": 44,
+   "type": "chorus",
+   "label": "Final Chorus",
+   "section": 11,
+   "text": "Slow and fast, and up and down,",
+   "matched": 7,
+   "total": 7,
+   "start": 167.86,
+   "end": 171.97
+  },
+  {
+   "i": 45,
+   "type": "chorus",
+   "label": "Final Chorus",
+   "section": 11,
+   "text": "High and low, now spin around!",
+   "matched": 6,
+   "total": 6,
+   "start": 172.38,
+   "end": 175.21
+  },
+  {
+   "i": 46,
+   "type": "chorus",
+   "label": "Final Chorus",
+   "section": 11,
+   "text": "Yes and no, hello, goodbye,",
+   "matched": 5,
+   "total": 5,
+   "start": 175.6,
+   "end": 178.99
+  },
+  {
+   "i": 47,
+   "type": "chorus",
+   "label": "Final Chorus",
+   "section": 11,
+   "text": "Come on, copy, give it a try!",
+   "matched": 6,
+   "total": 7,
+   "start": 180.64,
+   "end": 185.99
+  }
+ ]
+}

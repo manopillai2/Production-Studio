@@ -2,8 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, fmtTime } from '../api.js';
 import { useStudio, useAction, ReviewBanner, JobList } from '../ui.jsx';
 import ScenePlayer from '../engine/ScenePlayer.jsx';
+import { ShotDoctor } from './StageAnimate.jsx';
+import { LOOK_DEFAULTS } from '../engine/Landscape.js';
 import { SceneEngine, shotTimes, timelineEnd } from '../engine/SceneEngine.js';
-import { captionAt, captionFontReady, drawCaption } from '../engine/captions.js';
+import { captionFontReady, drawOverlay } from '../engine/captions.js';
 
 const RES = { '720p': [1280, 720], '1080p': [1920, 1080] };
 
@@ -15,6 +17,7 @@ export default function StageExport() {
   const [jobs, setJobs] = useState(episode.renders || []);
   const player = useRef();
   const offscreen = useRef();
+  const [doctor, setDoctor] = useState(null);
   const load = useCallback(() => api.get(`/api/episodes/${episode.id}/scene`).then(setScene), [episode.id]);
   useEffect(() => { load(); }, [load]);
   useEffect(() => setJobs(episode.renders || []), [episode.renders]);
@@ -43,7 +46,8 @@ export default function StageExport() {
       jobId = job.id;
       const canvas = offscreen.current; canvas.width = w; canvas.height = h;
       const engine = new SceneEngine(canvas, { width: w, height: h, preserveDrawingBuffer: true, pixelRatio: 1 });
-      await engine.load({ shots: scene.shots, assets: scene.assets, timing: scene.timing, duration: scene.audio?.duration, audio: scene.audio });
+      await engine.load({ shots: scene.shots, assets: scene.assets, timing: scene.timing, duration: scene.audio?.duration, audio: scene.audio,
+        look: { ...(scene.look || {}), accent: scene.channel?.colors?.text }, roles: scene.roles, sections: scene.sections });
       const total = Math.ceil(duration * fps);
       // Each frame = the 3D picture + the lyric line on top (same look as the preview).
       const lyricLines = scene.timing?.lines || [];
@@ -54,7 +58,7 @@ export default function StageExport() {
       for (let f = 0; f < total; f++) {
         engine.renderAt(f / fps);
         ctx.drawImage(canvas, 0, 0, w, h);
-        drawCaption(ctx, captionAt(lyricLines, f / fps)?.text, w, h);
+        drawOverlay(ctx, w, h, f / fps, { lines: lyricLines, look: scene.look, title: scene.title, channel: scene.channel, duration });
         const blob = await new Promise((r) => comp.toBlob(r, 'image/jpeg', 0.92));
         batch.append('frames', blob, `f${String(f).padStart(6, '0')}.jpg`); n++;
         if (n >= 30) await flush();
@@ -83,11 +87,12 @@ export default function StageExport() {
       <ReviewBanner flagKey="export" />
       <div className="export-grid">
         <div className="card">
-          <ScenePlayer ref={player} scene={scene} lines={scene.timing?.lines || []} height={520} />
+          <ScenePlayer ref={player} scene={scene} lines={scene.timing?.lines || []} height={520} onBuilt={setDoctor} />
           <h4>Shots</h4>
-          <div className="shot-strip">
+          <div className="shot-strip thumbs">
             {times.map((x, i) => (
-              <button key={x.shot.id} className="shot-chip" style={{ flex: Math.max(0.6, x.length) }} onClick={() => player.current?.seek(x.start, true)}>
+              <button key={x.shot.id} className="shot-chip" onClick={() => player.current?.seek(x.start + 0.01, true)} title={x.shot.title}>
+                {doctor?.thumbs?.[x.shot.id] ? <img src={doctor.thumbs[x.shot.id]} alt="" /> : <span className="thumb-empty">{i + 1}</span>}
                 <b>{i + 1}. {x.shot.title}</b><small className="mono">{fmtTime(x.start)}–{fmtTime(x.end)}</small>
               </button>
             ))}
@@ -111,9 +116,43 @@ export default function StageExport() {
           )}
           <h4>Exports</h4>
           <JobList jobs={jobs} />
+          <Checklist scene={scene} episode={episode} doctor={doctor} times={times} duration={duration} openStage={(k) => openProject(episode.id, k)} />
         </div>
       </div>
       <canvas ref={offscreen} className="offscreen-canvas" />
+    </div>
+  );
+}
+
+/** Before you export: what a finished nursery-rhyme video needs, checked against this project. */
+function Checklist({ scene, episode, doctor, times, duration, openStage }) {
+  const L = { ...LOOK_DEFAULTS, ...(scene.look || {}) };
+  const lines = (scene.timing?.lines || []).filter((l) => l.start != null);
+  const intro = lines[0]?.start ?? 0; const outro = duration - (lines.at(-1)?.end ?? duration);
+  const warns = (doctor?.issues || []).filter((x) => x.level === 'warn').length;
+  const longShots = times.filter((x) => x.length > 10).length;
+  const items = [
+    [!!scene.audio, 'Final song approved (Stage 3)', 'music'],
+    [!!scene.timing?.approved, 'Lyric timing approved: captions and shots follow the singing', 'music'],
+    [scene.shots.length > 0 && scene.shots.every((s) => s.setting?.card_id), 'Every shot has scenery', 'animate'],
+    [doctor ? warns === 0 : null, doctor ? (warns ? `Shot Doctor: ${warns} problem${warns === 1 ? '' : 's'} to fix in Stage 4` : 'Shot Doctor: no problems') : 'Shot Doctor runs when you click Generate Preview', 'animate'],
+    [!L.title_card ? null : intro >= 1.2, L.title_card ? (intro >= 1.2 ? `Title card shows during the ${intro.toFixed(1)} s intro` : `Title card needs an intro of 1.2 s or more (now ${intro.toFixed(1)} s): start line 1 later in Stage 3`) : 'Title card is off (Look)', intro >= 1.2 ? 'animate' : 'music'],
+    [!L.end_card ? null : outro >= 1.2, L.end_card ? (outro >= 1.2 ? `End card shows during the ${outro.toFixed(1)} s outro` : `End card needs an outro of 1.2 s or more (now ${outro.toFixed(1)} s): use a song with an instrumental ending`) : 'End card is off (Look)', 'music'],
+    [longShots === 0, longShots ? `${longShots} shot${longShots === 1 ? ' is' : 's are'} longer than 10 s: consider splitting ${longShots === 1 ? 'it' : 'them'} for variety` : 'No very long shots', 'animate'],
+    [duration <= 240, `Length ${fmtTime(duration)}${duration > 240 ? ': nursery rhymes work best at 1–4 minutes' : ''}`, 'music'],
+  ];
+  return (
+    <div className="checklist">
+      <h4>Before you export</h4>
+      <ul>
+        {items.map(([ok, text, stage], i) => (
+          <li key={i} className={ok === true ? 'ok' : ok === false ? 'no' : 'na'}>
+            <span className="mark">{ok === true ? '✓' : ok === false ? '!' : '•'}</span><span>{text}</span>
+            {ok === false && <button className="btn tiny" onClick={() => openStage(stage)}>Open</button>}
+          </li>
+        ))}
+      </ul>
+      {doctor && (doctor.issues || []).length > 0 && <ShotDoctor doctor={doctor} times={times} compact />}
     </div>
   );
 }

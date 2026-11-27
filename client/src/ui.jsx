@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useRef, useState, useCallback, lazy, Suspense } from 'react';
+import { getReference, ReferenceChip } from './reference.jsx';
 import { api, resLabel, fmtTime } from './api.js';
 
 export const StudioContext = createContext(null);
@@ -46,7 +47,7 @@ export function useCopy() {
 }
 
 /** Claude-powered chat box used in every stage. `send(message)` must call the API and return {messages}. */
-export function Assistant({ scope, episodeId = 0, title = 'Assistant', intro, chips = [], send, renderRef, offline, reloadKey = 0 }) {
+export function Assistant({ scope, episodeId = 0, title = 'Assistant', intro, chips = [], send, renderRef, offline, reloadKey = 0, refAction }) {
   const { toast, health, go } = useStudio();
   const [msgs, setMsgs] = useState([]);
   const [text, setText] = useState('');
@@ -68,7 +69,7 @@ export function Assistant({ scope, episodeId = 0, title = 'Assistant', intro, ch
     if (!message || pending) return;
     setPending(message);
     try {
-      const r = await send(message);
+      const r = await send(message, refAction ? getReference(refAction) : undefined);
       if (r?.messages) setMsgs(r.messages);
       setText('');
     } catch (e) { toast(e.message, 'error'); }
@@ -85,6 +86,7 @@ export function Assistant({ scope, episodeId = 0, title = 'Assistant', intro, ch
         <span className="grow" />
         {msgs.length > 0 && <button className="btn ghost tiny" onClick={clear}>Clear chat</button>}
       </div>
+      {refAction && <ReferenceChip action={refAction} title={title} />}
       {!ready && (
         <div className="assistant-off">
           The assistant needs Claude. <button className="btn small primary" onClick={() => go('connections')}>Connect Claude</button>

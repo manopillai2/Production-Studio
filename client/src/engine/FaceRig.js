@@ -83,10 +83,18 @@ function findFace(obj, head) {
   // Raycasting a skinned mesh skins every vertex for every ray (slow). Bake the area around the head once into
   // plain triangles (same uvs and materials), and cast all rays against that.
   const meshes = bakeRegion(obj, (v) => Math.abs(v.x - H.x) < 0.45 * h && v.y > H.y - 0.45 * h);
+  // The face can point sideways in the rest pose (Meshy rigs mark the face with a "headfront" bone). Turn the baked
+  // head so the face looks along +Z, search there, and turn the results back at the end.
+  let yaw = 0; let frontBone = null; obj.traverse((o) => { if (!frontBone && /headfront/i.test(o.name || '')) frontBone = o; });
+  if (frontBone) { const f = frontBone.getWorldPosition(new THREE.Vector3()).sub(H); if (Math.hypot(f.x, f.z) > 1e-4 * h) yaw = Math.atan2(f.x, f.z); }
+  const toFace = new THREE.Matrix4().makeTranslation(H.x, H.y, H.z).multiply(new THREE.Matrix4().makeRotationY(-yaw)).multiply(new THREE.Matrix4().makeTranslation(-H.x, -H.y, -H.z));
+  const fromFace = toFace.clone().invert(); const unYaw = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
+  for (const m of meshes) { if (yaw) m.geometry.applyMatrix4(toFace); m.geometry.computeBoundingBox(); m.geometry.computeBoundingSphere(); }
+  const fbox = new THREE.Box3(); for (const m of meshes) fbox.union(m.geometry.boundingBox);
   if (!meshes.length) { console.warn("Face: no mesh near the head"); return null; }
   const ray = new THREE.Raycaster();
-  const front = box.max.z + h * 0.5;
-  const cast = (x, y) => { ray.set(new THREE.Vector3(x, y, front), new THREE.Vector3(0, 0, -1)); ray.far = front - box.min.z + 1; return ray.intersectObjects(meshes, false)[0] || null; };
+  const front = fbox.max.z + h * 0.5;
+  const cast = (x, y) => { ray.set(new THREE.Vector3(x, y, front), new THREE.Vector3(0, 0, -1)); ray.far = front - fbox.min.z + 1; return ray.intersectObjects(meshes, false)[0] || null; };
 
   // 1) Head top: scan upward from the head bone until the rays stop hitting.
   let top = null;
@@ -133,7 +141,8 @@ function findFace(obj, head) {
   const pairs = [];
   for (let a = 0; a < darkSpots.length; a++) for (let b = a + 1; b < darkSpots.length; b++) {
     const A = darkSpots[a], B = darkSpots[b]; const sep = Math.abs(A.x - B.x); const dy = Math.abs(A.y - B.y);
-    if (sep < 0.15 * L || sep > 1.2 * L || dy > 0.35 * sep) continue;
+    if (sep < 0.15 * L || sep > 0.75 * L || dy > 0.25 * sep) continue;
+    if (Math.min(A.n, B.n) / Math.max(A.n, B.n) < 0.4) continue; // a pair of eyes is about the same size (a hair patch next to one eye is not)
     const score = Math.min(A.n, B.n) * 2 + A.n + B.n - dy / cell - Math.abs(A.n - B.n) * 0.5 + (A.white + B.white) * 6;
     pairs.push({ score, sep, y: (A.y + B.y) / 2, x: (A.x + B.x) / 2, l: A.x > B.x ? A : B, r: A.x > B.x ? B : A });
   }
@@ -159,7 +168,8 @@ function findFace(obj, head) {
   //    Collars, scarves and buttons further down are ignored.
   const near = (c) => { const ns = [[2, 0], [-2, 0], [0, 2], [0, -2]].map(([di, dj]) => grid.get(`${c.i + di},${c.j + dj}`)).filter(Boolean); return ns.length ? median(ns.map((q) => q.l)) : skinLum; };
   const reddish = ([r, g, b]) => r > g * 1.4 && r > b * 1.3 && lum([r, g, b]) < skinLum * 1.6; // not light pink blush
-  const inZone = (c) => c.y < eyeY - eyeR * 0.9 && c.y > eyeY - 0.9 * sep && Math.abs(c.x - fx) < 0.3 * sep; // centre line only (cheek blush is to the sides)
+  const chin = Math.max(eyeY - 0.9 * sep, H.y - 0.55 * L); // never below the chin (collars, buttons, pockets are not the mouth)
+  const inZone = (c) => c.y < eyeY - eyeR * 0.9 && c.y > chin && Math.abs(c.x - fx) < 0.3 * sep; // centre line only (cheek blush is to the sides)
   const marks = groups((c) => inZone(c) && (c.l < near(c) * 0.6 || reddish(c.c))).filter((g) => g.n <= 30).sort((p, q) => q.y - p.y); // top first: nose, then mouth
   let mouth;
   // The nose can show up as several marks (nose + nostrils): the mouth is the first mark clearly BELOW the nose.
@@ -205,7 +215,9 @@ function findFace(obj, head) {
     const p = top.addScaledVector(fwd, Math.max(0, maxP - top.dot(fwd)) + lift);
     return { p, n: fwd.clone() };
   }).filter(Boolean);
+  if (mouth.y < chin) mouth.y = Math.max(chin, eyeY - 0.75 * sep);
   const mo = place(mouth.x, mouth.y, lift * 0.8);
+  if (mo && (mo.p.distanceTo(H) > 1.1 * L || mo.p.y < H.y - 0.6 * L)) { console.warn('Face: mouth would not be on the head; no face overlay'); return null; }
   if (lids.length < 2 || !mo) { console.warn("Face: lids " + lids.length + " mouth " + !!mo); return null; }
 
   // Express in head-bone space.
@@ -214,7 +226,8 @@ function findFace(obj, head) {
   head.updateMatrixWorld(true);
   const toHead = (s, w, hgt) => {
     const tmp = new THREE.Object3D();
-    tmp.position.copy(s.p); tmp.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), s.n); tmp.scale.set(w, hgt, w);
+    const wp = s.p.clone().applyMatrix4(fromFace); const wn = s.n.clone().applyQuaternion(unYaw); // back from the face frame to the model
+    tmp.position.copy(wp); tmp.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), wn); tmp.scale.set(w, hgt, w);
     tmp.updateMatrixWorld(true);
     head.attach(tmp);
     const out = { pos: tmp.position.clone(), quat: tmp.quaternion.clone(), scale: tmp.scale.clone() };
@@ -222,7 +235,7 @@ function findFace(obj, head) {
     return out;
   };
   return {
-    found, skin, debug: { L, h, cell, skinLum, whites: best ? [best.l.white, best.r.white].map((x) => +x.toFixed(2)) : null, marks: marks.length, eyes: [le, re].map((e) => [+(e.x - cx).toFixed(3), +(e.y - H.y).toFixed(3), +e.r.toFixed(3)]), mouth: [+(mouth.x - cx).toFixed(3), +(mouth.y - H.y).toFixed(3), +mouth.w.toFixed(3)] },
+    found, skin, debug: { yaw: +THREE.MathUtils.radToDeg(yaw).toFixed(1), L, h, cell, skinLum, whites: best ? [best.l.white, best.r.white].map((x) => +x.toFixed(2)) : null, marks: marks.length, eyes: [le, re].map((e) => [+(e.x - cx).toFixed(3), +(e.y - H.y).toFixed(3), +e.r.toFixed(3)]), mouth: [+(mouth.x - cx).toFixed(3), +(mouth.y - H.y).toFixed(3), +mouth.w.toFixed(3)] },
     lids: lids.map((s) => toHead(s, eyeR * 2.15, eyeR * 2.2)),
     mouth: toHead(mo, mouth.w, mouth.w * 0.7),
   };

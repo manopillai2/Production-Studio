@@ -77,6 +77,25 @@ This is the single place for your world's visual rules: characters, faces, fur, 
 - Character-specific details (for example Pip's own-right crescent ear and own-front-left golden paw) belong in that character's card description. Left and right always mean **the character's own** sides.
 - **Limits.** Uniqueness for Meshy, Local AI and imported models is guided (prompt clause, palette check), not measured geometrically. Only Build Locally designs get a similarity score.
 
+## Look, framing and checks (v0.6, 26 Nov 2026)
+
+The full step-by-step guide is in **docs/Rhymes-Studio-Guide.pdf**.
+
+- **Landscape around the scenery** (`client/src/engine/Landscape.js`). Every shot gets a gradient sky, drifting clouds, three layers of hills that fade into haze, trees, set dressing (flowers, bushes, grass) and a blended ground, all in the World Style colours. Stars appear at night. Project defaults are in **Stage 4 → 🎨 Look**; a shot can override them under **Landscape for this shot**, which is stored in `lighting.look`.
+- **Rendering.** Neutral tone mapping, sky-based reflections (PMREM), a rim light, softer shadows fitted to the action, and contact shadows under everything standing.
+- **Shot sizes.** `camera.size` is one of extreme-wide, wide, full, medium or close-up, and frames subjects by their measured size. A fitting pass then keeps every subject inside the frame. Still moves get a slow push-in. Sky objects are kept in frame at a readable size.
+- **Transitions.** `camera.transition` is one of cut, dissolve, dip-white, iris or wipe. Auto means a dissolve at a new section and an iris at a new place. The video also fades in and out.
+- **On-screen text** (`client/src/engine/captions.js`): a title card over the intro, an end card over the outro, and karaoke lyrics in the Channel Identity caption style. The preview and the MP4 draw them with the same function.
+- **Shot Doctor** (`SceneEngine.analyse()`) flags characters that are small, cut off, hidden, have their back to the camera, mostly empty sky, repeated framing and long still shots. Each problem has a one-click fix. It shows in Stages 4 and 5, along with shot thumbnails.
+- **Actor option `face_travel: false`**: a rider or vehicle keeps facing the camera while it moves.
+- **Claude look check** (Stage 2, `POST /api/cards/:id/look-check`): Claude views front and side pictures of a model and reports whether it matches its name. The result is stored in `asset_cards.look_check`.
+- **Review feedback** under each result: the direction the result was made from (`card_revisions.direction`) and your notes (`card_revisions.feedback`). Claude revises the prompt from the notes and keeps applying them.
+- **Project look API**: `PUT /api/episodes/:id/look` (`episodes.look`). Both planners (Claude and the offline plan) use shot sizes, transitions and per-shot landscape.
+- **World Style is compulsory** for every Claude call: lyrics, cast analysis, prompts, the design chat, music and shot plans. **Inspiration screenshots** (My World → World Style, up to 12, stored as `assets` with owner_type `world`) are read by Claude into an **inspiration brief** (setting `world_inspiration`). The brief takes about 80% of the ideas and never copies characters, logos or exact designs. Every call gets the brief, and visual calls also get the screenshots. **Landscape for every video** (setting `world_look`, with Claude suggestions) is the default under each project's Stage 4 Look.
+- **Reference choice for every Claude call** (`client/src/reference.jsx`): **My World**, **My World + my existing characters & designs** (adds the locked designs and their pictures, and allows reuse matches), or **Something new** (only the pasted description). The request body carries `reference: {mode, text}`, the server resolves it with `worldFor()` in `index.js`, and the last choice per action is remembered in the browser. Chat assistants show it as a chip.
+- **Stage 2 landscape** (`stages/LandscapeSection.jsx`, `POST /api/episodes/:id/landscape/design`, Claude or offline). It designs the project landscape plus each place's differences and time of day (`asset_cards.landscape`, `episodes.landscape_plan`), with a live 3D preview per place. Layering: World Style → project Look → place (Stage 2) → shot. Shot planning uses the place's time of day as the lighting.
+- **UI**: a “How this stage works” guide on every stage, a Stage 4 workspace where the player stays in view, quick placement buttons, keyboard shortcuts (Space, ← →, F) and a Stage 5 “Before you export” checklist.
+
 ## Optional: Local AI (Hunyuan3D-2)
 
 > **This laptop (Intel Iris Xe, 7.6 GB RAM) can't use its GPU for it.** The "4 GB" Windows shows for Intel graphics is borrowed system memory, and PyTorch's Intel GPU backend doesn't support 12th-gen Iris Xe. It **can** run shape-only generation on the CPU. See [Local AI on a laptop without an NVIDIA GPU](#local-ai-on-a-laptop-without-an-nvidia-gpu-cpu-shape-only).
@@ -195,3 +214,6 @@ client/src/stages/        StageLyrics, StageCast (+RecipeEditor), StageMusic (+T
 client/src/engine/        SceneEngine (deterministic 3D renderer), ScenePlayer (audio-synced), Viewer3D, thumbnails
 storage/                  database + media (in git; API keys live in storage/secrets.json, which is ignored)
 ```
+
+## Learnings
+See [docs/LEARNINGS.md](docs/LEARNINGS.md) for detailed lessons from building the studio and producing Project 05, and `tools/testing/` for the headless test harness.

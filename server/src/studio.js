@@ -1,7 +1,7 @@
 // Routes for the five-stage workflow (Stages 2–5). Registered from index.js.
 import fs from 'node:fs';
 import path from 'node:path';
-import { one, all, run, tx } from './db.js';
+import { one, all, run, tx, getSetting } from './db.js';
 import { MEDIA_DIR, TMP_DIR } from './paths.js';
 import { runFfmpeg, FFMPEG, probe } from './media.js';
 import { cardOut, cardsFor, sceneShotOut, sceneShotsFor, libraryPreview, flagStages, clearFlag, episodeFull, jobOut, channel } from './model.js';
@@ -22,7 +22,7 @@ const writeRel = (rel, buf) => { const abs = path.join(MEDIA_DIR, rel); fs.mkdir
 const ACTIVE_GEN = `(type LIKE 'meshy-%' OR type LIKE 'localai-%') AND status IN ('queued','running')`;
 
 export function registerStudio(app, ctx) {
-  const { h, need, HttpError, upload, touchEpisode, findMatch, libraryText, worldContext, cleanupTmp } = ctx;
+  const { h, need, HttpError, upload, touchEpisode, findMatch, libraryText, worldContext, worldContextFull, worldFor, cleanupTmp } = ctx;
   const getCard = (id) => need(one('SELECT * FROM asset_cards WHERE id=?', Number(id)), 'Asset card');
   // ---- World Style everywhere ----
   const S = () => snapshot(currentProfile()); // the style snapshot new recipes are built with
@@ -39,12 +39,24 @@ export function registerStudio(app, ctx) {
   const uniq = (card) => { try { return card.recipe ? uniquenessReport(JSON.parse(card.recipe), lockedRecipes(card)) : null; } catch { return null; } };
   /** Exactly what “Generate in Meshy” will send: card prompt + World Style summary + uniqueness clause (≤ 800 chars). */
   const meshyPrompt = (c) => {
-    const summary = channel().world_style_summary || '';
+    let summary = channel().world_style_summary || '';
+    // Scenery and props get only the non-character parts of the summary: "creatures, oversized heads, glossy eyes,
+    // fur tufts" made Meshy put little creatures into empty sets.
+    if (c.kind !== 'character') summary = summary.split(/(?<=\.)\s+/).filter((x) => !/creature|head|eye|cheek|fur|tuft|character/i.test(x)).join(' ');
     const style = summary && !String(c.prompt || '').includes(summary.slice(0, 40)) ? ` World style: ${summary}` : '';
     // No "clearly different from: <names>" list: it wasted the 800-character limit. Uniqueness is handled when
     // Claude writes the prompt (it sees every locked design), so the whole budget goes to describing this asset.
     const unique = '';
-    const base = String(c.prompt || '').trim().slice(0, Math.max(200, 800 - style.length - unique.length));
+    // Fit the card prompt into what is left of the 800 characters by whole sentences, and never drop the "No …" /
+    // "Never …" sentences (cutting mid-sentence used to remove "No animals, creatures…" from scenery prompts).
+    const fit = (text, max) => {
+      const t = String(text || '').trim(); if (t.length <= max) return t;
+      const sents = t.split(/(?<=[.!?])\s+/); const neg = sents.filter((x) => /^(no|never|without|only)\b/i.test(x)); const pos = sents.filter((x) => !neg.includes(x));
+      let out = ''; const negText = neg.join(' ');
+      for (const x of pos) { if ((out + ' ' + x + ' ' + negText).trim().length > max) break; out = `${out} ${x}`.trim(); }
+      return `${out} ${negText}`.trim().slice(0, max);
+    };
+    const base = fit(c.prompt, Math.max(200, 800 - style.length - unique.length));
     // Meshy paints from the texture prompt alone, so it must say WHAT to colour, not just list colours
     // (a bare palette list made a whole house oat-cream). Describe the object, then ask for varied palette colours.
     const prof = currentProfile();
@@ -54,11 +66,28 @@ export function registerStudio(app, ctx) {
     const tex = `${what}${colourRule}`.trim().slice(0, 600);
     return { final: `${base}${style}${unique}`.slice(0, 800), base, style: style.trim(), unique: unique.trim(), texture: tex };
   };
+  const parseJSON = (t, d) => { try { return t ? JSON.parse(t) : d; } catch { return d; } };
+  /** The direction a Meshy job was given (exact prompt sent, texture, preview image, pose, rig). */
+  const directionFromJob = (job) => {
+    const p = parseJSON(job?.params, null);
+    if (!p) return null;
+    return { prompt: p.prompt || '', texture_prompt: p.texture_prompt || '', from_preview: !!p.image_path, preview_image: p.image_path || null, pose: p.pose || 'none', rig: p.rig ? (p.animation_type || 'biped') : null };
+  };
+  /** A revision's stored direction; older Meshy results get it from the job that made them (saved for next time). */
+  const directionOf = (r) => {
+    if (r.direction) return parseJSON(r.direction, null);
+    if (r.method !== 'meshy' || !r.model_path) return null;
+    const d = directionFromJob(one(`SELECT params FROM jobs WHERE type='meshy-3d' AND json_extract(output,'$.model_path')=? ORDER BY id DESC LIMIT 1`, r.model_path));
+    if (d) run('UPDATE card_revisions SET direction=? WHERE id=?', JSON.stringify(d), r.id);
+    return d;
+  };
+  const previewOf = (c) => { try { return c?.preview ? JSON.parse(c.preview) : null; } catch { return null; } };
   const out = (id) => {
     const c = one('SELECT * FROM asset_cards WHERE id=?', id);
-    const revisions = all('SELECT id,n,method,note,created_at,model_path,style_version,rig FROM card_revisions WHERE card_id=? ORDER BY n DESC', id).map((r) => ({ ...r, rig: r.rig ? JSON.parse(r.rig) : null }));
+    const revisions = all('SELECT id,n,method,note,created_at,model_path,style_version,rig,direction,feedback FROM card_revisions WHERE card_id=? ORDER BY n DESC', id).map((r) => ({ ...r, rig: r.rig ? JSON.parse(r.rig) : null, direction: directionOf(r), feedback: parseJSON(r.feedback, []) }));
     const rig = revisions.find((r) => r.id === c?.revision_id)?.rig || null;
     return { ...cardOut(c), revisions, rig: rig && { clips: rig.clips.map((x) => x.name), rig_url: `/media/${rig.rig}`, animation_type: rig.animation_type || 'biped' }, recipe: parseRecipe(id), mapping: JSON.parse(c?.mapping || '{}'), uniqueness: uniq(c),
+      preview: previewOf(c), preview_job: one(`SELECT id, status, message, progress FROM jobs WHERE type='meshy-preview' AND json_extract(params,'$.card_id')=? ORDER BY id DESC LIMIT 1`, id) || null,
       style_current: styleVersion(), style_stale: !!revisions[0]?.style_version && revisions[0].style_version !== styleVersion() };
   };
   const parseRecipe = (id) => { const r = one('SELECT recipe FROM asset_cards WHERE id=?', id)?.recipe; return r ? JSON.parse(r) : null; };
@@ -73,9 +102,9 @@ export function registerStudio(app, ctx) {
     if (a) throw new HttpError(409, `A generation is already running for this project (job #${a.id}, ${a.type.startsWith('meshy') ? 'Meshy' : 'Local AI'}). One at a time — wait for it to finish.`);
   };
   /** Record a new result for a card (every build/import/generation/recolour is kept as a revision). */
-  const addRevision = (cardId, { method, recipe = null, model_path, note = '' }) => {
+  const addRevision = (cardId, { method, recipe = null, model_path, note = '', direction = null }) => {
     const n = one('SELECT COALESCE(MAX(n),0)+1 n FROM card_revisions WHERE card_id=?', cardId).n;
-    const rid = Number(run('INSERT INTO card_revisions(card_id,n,method,recipe,model_path,note,style_version) VALUES(?,?,?,?,?,?,?)', cardId, n, method, recipe ? JSON.stringify(recipe) : null, model_path, note, recipe?.style?.version || styleVersion()).lastInsertRowid);
+    const rid = Number(run('INSERT INTO card_revisions(card_id,n,method,recipe,model_path,note,style_version,direction) VALUES(?,?,?,?,?,?,?,?)', cardId, n, method, recipe ? JSON.stringify(recipe) : null, model_path, note, recipe?.style?.version || styleVersion(), direction ? JSON.stringify(direction) : null).lastInsertRowid);
     run(`UPDATE asset_cards SET revision_id=?, model_path=?, model_source=?, status='review', approved_at=NULL, saved_at=NULL, saved_version_id=NULL, error=NULL,
          ${recipe ? 'recipe=?,' : ''} updated_at=datetime('now') WHERE id=?`, rid, model_path, method, ...(recipe ? [JSON.stringify(recipe)] : []), cardId);
     return rid;
@@ -109,7 +138,8 @@ export function registerStudio(app, ctx) {
 
   // Hooks for background generators (results come back as new revisions — never auto-approved).
   meshy.setHooks({
-    onCardResult: (cardId, r) => { if (one('SELECT id FROM asset_cards WHERE id=?', cardId)) addRevision(cardId, { method: 'meshy', model_path: r.model_path, note: 'Meshy text-to-3D' }); if (r.thumb_path) run('UPDATE asset_cards SET thumb_path=? WHERE id=?', r.thumb_path, cardId); },
+    onCardPreview: (cardId, r) => { if (one('SELECT id FROM asset_cards WHERE id=?', cardId)) run('UPDATE asset_cards SET preview=? WHERE id=?', JSON.stringify({ ...r, at: new Date().toISOString() }), cardId); },
+    onCardResult: (cardId, r) => { if (one('SELECT id FROM asset_cards WHERE id=?', cardId)) { const d = directionFromJob(one('SELECT params FROM jobs WHERE id=?', r.job_id)); addRevision(cardId, { method: 'meshy', model_path: r.model_path, note: d?.from_preview ? 'Meshy 3D from the preview image' : 'Meshy text-to-3D', direction: d }); } if (r.thumb_path) run('UPDATE asset_cards SET thumb_path=? WHERE id=?', r.thumb_path, cardId); },
     onCardFailed: (cardId, msg) => run(`UPDATE asset_cards SET status=CASE WHEN model_path IS NULL THEN 'failed' ELSE 'review' END, error=? WHERE id=?`, msg, cardId),
     onCardRig: (cardId, r) => {
       // Attach the rig to the revision it was made from (the model shown on the card).
@@ -161,10 +191,12 @@ export function registerStudio(app, ctx) {
     const before = meshy.meshyCallCount();
     const lines = approvedLines(epId);
     if (!lines) throw new HttpError(400, 'Approve the lyrics in Stage 1 first — Stage 2 analyzes the approved version.');
-    const world = worldContext();
+    const ai = req.body.mode === 'ai' && providers.isActive('claude');
+    const world = ai ? await worldFor(req.body.reference) : worldContext();
+    const reuse = !ai || world.mode === 'world+cast'; // "My World" or "Something new" = don't match existing designs
     let items, source;
-    if (req.body.mode === 'ai' && providers.isActive('claude')) {
-      const r = await providers.analyzeAssets({ lines: lines.map((l) => `${l.text}${l.cue ? `  [on screen: ${l.cue}]` : ''}`), world, library: libraryText(), notes: castNotesOf(epId) });
+    if (ai) {
+      const r = await providers.analyzeAssets({ lines: lines.map((l) => `${l.text}${l.cue ? `  [on screen: ${l.cue}]` : ''}`), world, library: reuse ? libraryText() : 'none to reuse (the user asked for new designs)', notes: castNotesOf(epId) });
       items = (r.items || []).filter((x) => x?.name).map((x) => ({ ...x, signature: x.signature_features || '', usages: (x.usages || []).filter((i) => Number.isInteger(i) && i >= 0 && i < lines.length) }));
       source = 'claude';
     } else {
@@ -199,7 +231,7 @@ export function registerStudio(app, ctx) {
           }
           seen.add(existing.id); continue;
         }
-        const match = (it.reuse_name && findMatch(it.reuse_name, kind)) || findMatch(it.name, kind);
+        const match = reuse ? ((it.reuse_name && findMatch(it.reuse_name, kind)) || findMatch(it.name, kind)) : null;
         const description = it.description || draftDescription({ name: it.name, kind, signature: it.signature, lyricLines: (it.usages || []).map((i) => lines[i]?.text).filter(Boolean), worldGuide: world.guide });
         const map = mapDescription({ name: it.name, description, signature: it.signature, kind, style: S() });
         const styleSummary = channel().world_style_summary || '';
@@ -248,6 +280,13 @@ export function registerStudio(app, ctx) {
     if ('rig_type' in req.body) req.body.rig_note = 'Chosen by you';
     const keys = Object.keys(req.body).filter((k) => allowed.includes(k) || (k === 'rig_note' && 'rig_type' in req.body));
     if (keys.length) run(`UPDATE asset_cards SET ${keys.map((k) => `${k}=?`).join(',')}, updated_at=datetime('now') WHERE id=?`, ...keys.map((k) => String(req.body[k] ?? '')), c.id);
+    // Which lyric lines this asset appears in (0-based). Cards added by hand start with none; the engine uses this
+    // to decide who sings each line.
+    if (Array.isArray(req.body.usages)) {
+      const n = (approvedLines(c.episode_id) || []).length;
+      run('UPDATE asset_cards SET usages=? WHERE id=?', JSON.stringify([...new Set(req.body.usages.map(Number).filter((i) => Number.isInteger(i) && i >= 0 && i < n))].sort((a, b) => a - b)), c.id);
+      flagShotsFor(c);
+    }
     return out(c.id);
   }));
   app.delete('/api/cards/:id', h((req) => {
@@ -377,20 +416,119 @@ export function registerStudio(app, ctx) {
   }));
   app.get('/api/cards/:id/meshy-prompt', h((req) => meshyPrompt(getCard(req.params.id))));
 
+  // ---- Stage 2: the landscape where the story happens (project landscape + what is different around each place) ----
+  const landscapeOf = (c) => { try { return c?.landscape ? JSON.parse(c.landscape) : {}; } catch { return {}; } };
+  const TIMES = ['morning', 'day', 'sunset', 'night'];
+  const cleanSceneryLook = (b = {}, prev = {}) => {
+    const o = { ...prev };
+    for (const [k, opts] of Object.entries(LOOK_KEYS)) if (k !== 'transition' && k in b) { if (opts.includes(b[k])) o[k] = b[k]; else delete o[k]; }
+    for (const k of ['ground', 'hill_tint']) if (k in b) { if (/^#[0-9a-f]{6}$/i.test(b[k] || '')) o[k] = b[k]; else delete o[k]; }
+    if ('time_of_day' in b) { if (TIMES.includes(b.time_of_day)) o.time_of_day = b.time_of_day; else delete o.time_of_day; }
+    if ('why' in b) o.why = String(b.why || '').slice(0, 300);
+    return o;
+  };
+  const landscapeState = (epId) => {
+    const ep = one('SELECT * FROM episodes WHERE id=?', epId);
+    let plan = null; try { plan = ep.landscape_plan ? JSON.parse(ep.landscape_plan) : null; } catch { /* none */ }
+    return { plan, look: { ...getSetting('world_look', {}), ...lookOf(ep) }, project_look: lookOf(ep), world_look: getSetting('world_look', {}),
+      roles: currentProfile().roles, sceneries: cardsFor(epId).filter((c) => c.kind === 'location').map((c) => ({ card_id: c.id, name: c.name, model_url: c.model_url, status: c.status, usages: c.usages, landscape: landscapeOf(c) })) };
+  };
+  app.get('/api/episodes/:id/landscape', h((req) => { need(one('SELECT id FROM episodes WHERE id=?', +req.params.id), 'Project'); return landscapeState(+req.params.id); }));
+  app.put('/api/cards/:id/landscape', h((req) => {
+    const c = getCard(req.params.id);
+    if (c.kind !== 'location') throw new HttpError(400, 'Only scenery has a landscape.');
+    run('UPDATE asset_cards SET landscape=? WHERE id=?', JSON.stringify(cleanSceneryLook(req.body || {}, landscapeOf(c))), c.id);
+    flagStages(c.episode_id, { shots: `The landscape around “${c.name}” changed`, export: 'The landscape changed after the last export' });
+    touchEpisode(c.episode_id);
+    return landscapeState(c.episode_id);
+  }));
+  /** Design the landscape: Claude (with the reference the user chose), or offline rules from the lyrics. */
+  app.post('/api/episodes/:id/landscape/design', h(async (req) => {
+    const epId = +req.params.id;
+    const ep = need(one('SELECT * FROM episodes WHERE id=?', epId), 'Project');
+    const lines = approvedLines(epId);
+    if (!lines) throw new HttpError(400, 'Approve the lyrics in Stage 1 first.');
+    const cards = cardsFor(epId).filter((c) => c.kind === 'location');
+    let r; let source = 'offline';
+    if (req.body.mode === 'ai') {
+      if (!providers.isActive('claude')) throw new HttpError(400, 'Connect Claude in AI Connections, or use the simple landscape.');
+      const st = landscapeState(epId);
+      r = await providers.designLandscape({ world: await worldFor(req.body.reference, { images: true }), lines,
+        sceneries: cards.map((c) => ({ card_id: c.id, name: c.name, description: c.description, usages: c.usages })),
+        current: st.plan ? { project: st.project_look, sceneries: st.sceneries.map((s) => ({ card_id: s.card_id, ...s.landscape })) } : null });
+      source = 'claude';
+    } else {
+      // Offline: read the lyrics and cues for each place (night / sunset / morning words, clouds, flowers, trees).
+      const textOf = (idx) => idx.map((i) => `${lines[i]?.text || ''} ${lines[i]?.cue || ''}`).join(' ').toLowerCase();
+      const all2 = textOf(lines.map((_, i) => i));
+      const pick = (t) => ({ time_of_day: /night|moon|star|sleep|dream|bed/.test(t) ? 'night' : /sunset|evening|dusk/.test(t) ? 'sunset' : /morning|sunrise|wake|dawn/.test(t) ? 'morning' : 'day',
+        ...(/cloud|sky|kite|balloon|fly|float/.test(t) ? { clouds: 'many' } : {}), ...(/flower|garden|bloom|petal|meadow/.test(t) ? { dressing: 'lush' } : {}),
+        ...(/forest|tree|wood|park/.test(t) ? { trees: 'many' } : {}), ...(/hill|mountain|climb|up the/.test(t) ? { hills: 'tall' } : {}), ...(/sea|beach|pond|lake|river/.test(t) ? { hills: 'low' } : {}) });
+      const base = pick(all2);
+      r = { plan: `Simple landscape from the lyrics: ${base.time_of_day} light${base.clouds ? ', lots of clouds' : ''}${base.dressing ? ', lush flowers' : ''}${base.trees ? ', many trees' : ''}. Each place adds what its own lines mention.`,
+        project: { clouds: base.clouds || 'some', dressing: base.dressing || 'light', trees: base.trees || 'some', hills: base.hills || 'rolling' },
+        sceneries: cards.map((c) => ({ card_id: c.id, ...pick(textOf(c.usages || [])), why: 'From the lyric lines set here.' })) };
+    }
+    const proj = cleanLook(r.project || {}, lookOf(ep));
+    tx(() => {
+      run('UPDATE episodes SET look=?, landscape_plan=? WHERE id=?', JSON.stringify(proj), JSON.stringify({ plan: String(r.plan || '').slice(0, 1500), at: new Date().toISOString(), source, reference: req.body.reference?.mode || 'world+cast' }), epId);
+      for (const s of Array.isArray(r.sceneries) ? r.sceneries : []) {
+        const c = cards.find((x) => x.id === Number(s.card_id)); if (!c) continue;
+        run('UPDATE asset_cards SET landscape=? WHERE id=?', JSON.stringify(cleanSceneryLook(s, {})), c.id);
+      }
+    });
+    flagStages(epId, { shots: 'The landscape was designed again in Stage 2', export: 'The landscape changed after the last export' });
+    touchEpisode(epId);
+    return landscapeState(epId);
+  }));
+
+  // ---- Look check: Claude views pictures of the model and says whether it matches the name (Claude only) ----
+  app.post('/api/cards/:id/look-check', h(async (req) => {
+    const c = getCard(req.params.id);
+    if (!c.model_path) throw new HttpError(400, 'There is no model to check yet.');
+    if (!providers.isActive('claude')) throw new HttpError(400, 'Connect Claude in AI Connections to use the look check.');
+    const imgs = (Array.isArray(req.body.images) ? req.body.images : []).slice(0, 3)
+      .map((d) => String(d || '').replace(/^data:image\/png;base64,/, '')).filter((d) => d.length > 100 && d.length < 4_000_000).map((d) => Buffer.from(d, 'base64'));
+    if (!imgs.length) throw new HttpError(400, 'No picture of the model was sent.');
+    const r = await providers.lookCheck({ card: c, images: imgs });
+    const out2 = { verdict: ['match', 'partly', 'mismatch'].includes(r.verdict) ? r.verdict : 'partly', looks_like: String(r.looks_like || '').slice(0, 300),
+      issues: (Array.isArray(r.issues) ? r.issues : []).map((x) => String(x).slice(0, 200)).slice(0, 6), suggestion: String(r.suggestion || '').slice(0, 300), at: new Date().toISOString(), model_path: c.model_path };
+    run('UPDATE asset_cards SET look_check=? WHERE id=?', JSON.stringify(out2), c.id);
+    return out(c.id);
+  }));
+
   // ---- Draft / refine the Meshy prompt with Claude (Claude only — never Meshy) ----
   app.post('/api/cards/:id/draft-prompt', h(async (req) => {
     const c = getCard(req.params.id);
-    await draftPromptFor(c, req.body.instruction);
+    await draftPromptFor(c, req.body.instruction, req.body.reference);
     return out(c.id);
   }));
+  // ---- Review feedback on the current result → Claude revises the Meshy prompt (Claude only — never Meshy) ----
+  app.post('/api/cards/:id/feedback', h(async (req) => {
+    const c = getCard(req.params.id);
+    const text = String(req.body.feedback || '').trim().slice(0, 1500);
+    if (!text) throw new HttpError(400, 'Write what you want changed.');
+    if (!c.revision_id) throw new HttpError(400, 'There is no result to give feedback on yet.');
+    const rv = one('SELECT feedback FROM card_revisions WHERE id=?', c.revision_id);
+    run('UPDATE card_revisions SET feedback=? WHERE id=?', JSON.stringify([...parseJSON(rv?.feedback, []), { text, at: new Date().toISOString() }]), c.revision_id);
+    let revised = false;
+    if (req.body.revise !== false && providers.isActive('claude')) {
+      await draftPromptFor(getCard(c.id), `Revise the CURRENT prompts. The user reviewed the latest 3D result and wants these changes: "${text}". Change only what they asked for and keep everything else (design, colours, recognizable features) the same.`, req.body.reference);
+      revised = true;
+    }
+    return { ...out(c.id), revised };
+  }));
   /** Claude writes the Meshy prompts from: World Style + the lyric lines it appears in + your Stage 2 ideas + the card's own notes. */
-  const draftPromptFor = async (c, instruction) => {
+  const draftPromptFor = async (c, instruction, reference) => {
     const notes = castNotesOf(c.episode_id);
     const lines = approvedLines(c.episode_id) || [];
     const used = JSON.parse(c.usages || '[]').map((i) => lines[i]).filter(Boolean).map((l) => `${l.text}${l.cue ? `  [on screen: ${l.cue}]` : ''}`);
     const kindNotes = c.kind === 'character' ? notes.characters : c.kind === 'location' ? notes.scenery
       : [notes.characters && `Characters: ${notes.characters}`, notes.scenery && `Scenery: ${notes.scenery}`].filter(Boolean).join('\n');
-    const r = await providers.refineMeshyPrompt({ card: c, world: worldContext(), instruction, lyrics: used, notes: kindNotes });
+    const fb = all('SELECT n, feedback FROM card_revisions WHERE card_id=? AND feedback IS NOT NULL ORDER BY n', c.id)
+      .flatMap((r) => parseJSON(r.feedback, []).map((f) => `- (on result #${r.n}) ${f.text}`));
+    const review = fb.length ? `\n\nChanges the user asked for after reviewing earlier results. Keep ALL of them in the new prompt (later notes win if they conflict):\n${fb.join('\n')}` : '';
+    const r = await providers.refineMeshyPrompt({ card: c, world: await worldFor(reference, { images: true }), instruction: `${instruction || 'Write the best Meshy prompts for this asset.'}${review}`, lyrics: used, notes: kindNotes });
     run(`UPDATE asset_cards SET prompt=?, texture_prompt=?, signature=COALESCE(NULLIF(?, ''), signature), updated_at=datetime('now') WHERE id=?`,
       String(r.meshy_prompt || c.prompt).slice(0, 800), String(r.texture_prompt || c.texture_prompt || '').slice(0, 800), r.signature_features || '', c.id);
   };
@@ -426,13 +564,12 @@ export function registerStudio(app, ctx) {
     return meshyGenerate(c, req.body, `card ${c.id}`);
   }));
   /** One paid Meshy generation for a card. Only called from an explicit user click (the Generate button, or approving a director fix). */
-  const meshyGenerate = (c, body, ref) => {
+  /** The exact prompt, pose and rig settings a Meshy generation uses (the preview image uses the same ones). */
+  const meshyPlan = (c, body) => {
     const req = { body };
     if (!c.prompt?.trim()) throw new HttpError(400, 'Write or review the Meshy prompt on this card first.');
     if (c.prompt.length > 800 || (c.texture_prompt || '').length > 800) throw new HttpError(400, 'Meshy prompts must be 800 characters or fewer.');
-    if (c.status === 'generating') throw new HttpError(409, 'This card is already generating. Wait for it to finish.');
-    const permit = meshy.permit('generate', { episodeId: c.episode_id, ref });
-    const mp = meshyPrompt(c); // always includes the World Style summary + uniqueness clause
+    const mp = meshyPrompt(c); // always includes the World Style summary
     const rigType = ['biped', 'quadruped'].includes(req.body.rig_type) ? req.body.rig_type : ['biped', 'quadruped'].includes(c.rig_type) ? c.rig_type : 'biped';
     const rig = req.body.rig === true && c.kind === 'character' && req.body.rig_type !== 'none';
     if (rig && req.body.rig_type && req.body.rig_type !== c.rig_type) run('UPDATE asset_cards SET rig_type=?, rig_note=? WHERE id=?', rigType, 'Chosen by you', c.id);
@@ -448,10 +585,31 @@ export function registerStudio(app, ctx) {
     const prompt = !rig ? mp.final
       : rigType === 'quadruped' ? `${clean(mp.final, /\b(standing upright|on two (hind )?legs|bipedal|a-pose|t-pose|arms (held )?(slightly )?(out|away)[^.,]*)[^.,]*[.,]?/gi).slice(0, 800 - QUAD_SHAPE.length)}${QUAD_SHAPE}`
       : `${clean(mp.final, /\b(four[- ]legged|quadruped(al)?|on all fours|all four paws( visible)?)[^.,]*[.,]?/gi).slice(0, 800 - BIPED_SHAPE.length)}${BIPED_SHAPE}`;
-    const jobId = meshy.startJob('meshy-3d', c.episode_id, { card_id: c.id, prompt, texture_prompt: mp.texture, pose, rig, animation_type: rigType, height_meters: height, style_version: styleVersion() }, `Meshy 3D model${rig ? ' + rig' : ''} for ${c.name}`, permit);
+    return { prompt, texture: mp.texture, pose, rig, rigType, height, settings: `${prompt}|${pose}|${rig ? rigType : 'none'}` };
+  };
+  const meshyGenerate = (c, body, ref) => {
+    if (c.status === 'generating') throw new HttpError(409, 'This card is already generating. Wait for it to finish.');
+    const { prompt, texture, pose, rig, rigType, height } = meshyPlan(c, body);
+    // "Build from the preview": Meshy turns the approved preview picture into the 3D model (image to 3D).
+    const pv = body.from_preview ? previewOf(c) : null;
+    if (body.from_preview && !pv?.image_path) throw new HttpError(400, 'Make a preview image first.');
+    const permit = meshy.permit('generate', { episodeId: c.episode_id, ref });
+    const jobId = meshy.startJob('meshy-3d', c.episode_id, { card_id: c.id, prompt, texture_prompt: texture, pose, rig, animation_type: rigType, height_meters: height, style_version: styleVersion(), ...(pv ? { image_path: pv.image_path } : {}) },
+      `Meshy 3D model${pv ? ' from the preview image' : ''}${rig ? ' + rig' : ''} for ${c.name}`, permit);
     run(`UPDATE asset_cards SET status='generating', job_id=?, method='meshy', error=NULL WHERE id=?`, jobId, c.id);
     return out(c.id);
   };
+  // ---- Preview image in Meshy (paid, ~3 credits; only this explicit click submits) ----
+  app.post('/api/cards/:id/meshy-preview', h((req) => {
+    if (req.get('X-User-Action') !== 'preview-in-meshy' || req.body.confirm !== true) throw new HttpError(400, 'A preview can only be started with the “Preview in Meshy” button.');
+    const c = getCard(req.params.id);
+    const plan = meshyPlan(c, req.body);
+    meshy.startJob('meshy-preview', c.episode_id, { card_id: c.id, prompt: plan.prompt, pose: plan.pose, wide: c.kind !== 'character', settings: plan.settings },
+      `Meshy preview image for ${c.name}`, meshy.permit('preview', { episodeId: c.episode_id, ref: `preview click card ${c.id}` }));
+    return out(c.id);
+  }));
+  // What a preview/generation would be made from now (to tell whether an existing preview is out of date). No Meshy call.
+  app.post('/api/cards/:id/meshy-plan', h((req) => { const p = meshyPlan(getCard(req.params.id), req.body); return { prompt: p.prompt, pose: p.pose, settings: p.settings }; }));
   app.post('/api/meshy/balance', h(async (req) => meshy.balance(meshy.permit('balance', { episodeId: req.body.episode_id || null, ref: 'check credits click' }))));
   app.get('/api/meshy/calls', h(() => ({ count: meshy.meshyCallCount(), recent: all('SELECT * FROM meshy_calls ORDER BY id DESC LIMIT 20') })));
   app.get('/api/episodes/:id/gen-jobs', h((req) => all(`SELECT * FROM jobs WHERE episode_id=? AND (type LIKE 'meshy-%' OR type LIKE 'localai-%') ORDER BY id DESC LIMIT 20`, +req.params.id).map(jobOut)));
@@ -634,6 +792,7 @@ export function registerStudio(app, ctx) {
     let bodyRig = null;
     if (rig && c.kind === 'character') { try { bodyRig = JSON.parse(rig.notes || '{}').animation_type || null; } catch { /* no notes */ } bodyRig = bodyRig || c.rig_type || 'biped'; }
     return { card_id: c.id, name: c.name, kind: c.kind, model_url: c.model_url, saved: !!c.saved_at, item_id: c.item_id, rig_type: c.rig_type || null, body_rig: bodyRig, usages: c.usages || [],
+      ...(c.kind === 'location' ? { landscape: landscapeOf(c) } : {}),
       clips: (lib?.clips || []).map((a) => ({ id: a.id, label: a.label, category: a.category, url: a.url, status: a.status, notes: a.notes })) };
   });
   app.get('/api/episodes/:id/scene', h((req) => {
@@ -641,8 +800,40 @@ export function registerStudio(app, ctx) {
     const ep = need(one('SELECT * FROM episodes WHERE id=?', epId), 'Project');
     const audio = ep.master_audio_id ? one('SELECT * FROM assets WHERE id=?', ep.master_audio_id) : null;
     return { shots: sceneShotsFor(epId), assets: sceneAssets(epId), timing: timingOf(epId), lines: approvedLines(epId) || [], director: directorOf(ep),
-      audio: audio ? { url: `/media/${audio.file_path}`, duration: audio.duration, label: audio.label } : null };
+      audio: audio ? { url: `/media/${audio.file_path}`, duration: audio.duration, label: audio.label } : null,
+      look: { ...getSetting('world_look', {}), ...lookOf(ep) }, project_look: lookOf(ep), world_look: getSetting('world_look', {}), roles: currentProfile().roles, sections: sectionsOf(epId), title: ep.title, channel: { name: channel().name, colors: channel().colors, caption_style: channel().caption_style } };
   }));
+  // ---- The project's look (landscape around the scenery, title/end cards, karaoke captions, default transition) ----
+  const LOOK_KEYS = { sky: ['auto', 'clear', 'soft', 'storybook'], clouds: ['none', 'few', 'some', 'many'], hills: ['none', 'low', 'rolling', 'tall'], trees: ['none', 'few', 'some', 'many'], dressing: ['none', 'light', 'lush'], transition: ['auto', 'cut', 'dissolve', 'dip-white', 'iris', 'wipe'], river: ['none', 'behind', 'winding'], houses: ['none', 'few', 'some', 'many'], wind: ['calm', 'breezy', 'windy'], birds: ['none', 'few', 'some'] };
+  const lookOf = (ep) => { try { return JSON.parse(ep.look || '{}'); } catch { return {}; } };
+  const cleanLook = (b, prev = {}) => {
+    const o = { ...prev };
+    for (const [k, opts] of Object.entries(LOOK_KEYS)) if (k in b) { if (opts.includes(b[k])) o[k] = b[k]; else if (b[k] === '' || b[k] === null) delete o[k]; }
+    for (const k of ['ground', 'hill_tint']) if (k in b) { if (/^#[0-9a-f]{6}$/i.test(b[k] || '')) o[k] = b[k]; else delete o[k]; }
+    for (const k of ['title_card', 'end_card', 'karaoke', 'fade_in_out']) if (k in b) o[k] = !!b[k];
+    for (const k of ['title_text', 'end_text']) if (k in b) o[k] = String(b[k] || '').slice(0, 120);
+    return o;
+  };
+  app.put('/api/episodes/:id/look', h((req) => {
+    const ep = need(one('SELECT * FROM episodes WHERE id=?', +req.params.id), 'Project');
+    const look = cleanLook(req.body || {}, lookOf(ep));
+    run('UPDATE episodes SET look=? WHERE id=?', JSON.stringify(look), ep.id);
+    flagStages(ep.id, { export: 'The look changed after the last export' });
+    touchEpisode(ep.id);
+    return look;
+  }));
+  /** Verse / chorus sections of the approved lyrics as line ranges (for automatic transitions). */
+  const sectionsOf = (epId) => {
+    const ep = one('SELECT * FROM episodes WHERE id=?', epId);
+    const l = ep?.approved_lyrics_id && one('SELECT sections FROM lyrics WHERE id=?', ep.approved_lyrics_id);
+    if (!l) return [];
+    let i = 0; const out = [];
+    for (const sec of JSON.parse(l.sections)) {
+      const n = sec.lines.filter((x) => sungLine(x, ep.language).trim() || x.en?.trim()).length;
+      if (n) out.push({ type: sec.type, label: sec.label, from: i, to: i + n - 1 }); i += n;
+    }
+    return out;
+  };
   // The animation direction is saved with the project, together with Claude's last response to it.
   const directorOf = (ep) => { try { return JSON.parse(ep.director || '{}'); } catch { return {}; } };
   app.put('/api/episodes/:id/director', h((req) => {
@@ -677,16 +868,27 @@ export function registerStudio(app, ctx) {
         const pos = sky ? [x, 3.2, -4] : [motion.type === 'bounce' ? -2.5 : x, 0, 0.5];
         return { card_id: a.card_id, pos, rot: [0, 0, 0], scale: 1, motion };
       });
-      const lighting = /night|star|moon|sleep|dream/.test(text) ? 'night' : /morning|sunrise|wake/.test(text) ? 'morning' : /sunset|evening/.test(text) ? 'sunset' : nightSong ? 'night' : 'day';
+      const lighting = setting?.landscape?.time_of_day || (/night|star|moon|sleep|dream/.test(text) ? 'night' : /morning|sunrise|wake/.test(text) ? 'morning' : /sunset|evening/.test(text) ? 'sunset' : nightSong ? 'night' : 'day');
       const bounceIdx = actors.findIndex((a) => a.motion.type === 'bounce');
+      // Rhythm like a director: establish the place (wide), go closer (full, medium), a close-up on the singer,
+      // then back out. A new setting always starts wide. Ground characters face the camera.
+      const prevSetting = i > 0 ? (settings.find((s) => (cards[s.card_id]?.usages || []).includes(i - 1)) || settings[0]) : null;
+      const newPlace = !prevSetting || prevSetting.card_id !== setting?.card_id;
+      const RHYTHM = [{ preset: 'wide', size: 'wide' }, { preset: 'dolly-in', size: 'full' }, { preset: 'group', size: 'medium' }, { preset: 'closeup', size: 'closeup', target: 0 }, { preset: 'pan', size: 'full' }, { preset: 'orbit', size: 'full' }];
+      const groundIdx = actors.findIndex((a) => a.pos[1] < 2);
+      let camera = newPlace ? { preset: 'wide', size: 'wide' } : { ...RHYTHM[i % RHYTHM.length] };
+      if (camera.target != null) { if (groundIdx < 0) camera = { preset: 'wide', size: 'wide' }; else camera.target = groundIdx; }
+      if (bounceIdx >= 0) camera = { preset: 'follow', size: 'full', target: bounceIdx };
       return { title: `Line ${i + 1}: ${l.text.slice(0, 36)}`, line_from: i, line_to: i, setting: setting ? { card_id: setting.card_id } : {}, actors,
-        camera: bounceIdx >= 0 ? { preset: 'follow', target: bounceIdx } : { preset: cams[i % cams.length] }, lighting: { preset: lighting }, notes: '' };
+        camera, lighting: { preset: lighting }, notes: '' };
     });
   };
 
   /** Claude's plan, checked against the engine: known assets only, known motions/cameras/lighting, numbers clamped, lines covered in order. */
   const MOTION_TYPES = ['none', 'rise', 'drift', 'bounce', 'twinkle', 'spin', 'sway', 'path', 'circle'];
   const CAMERA_TYPES = ['wide', 'tilt-up', 'pan', 'dolly-in', 'closeup', 'follow', 'orbit', 'group'];
+  const SHOT_SIZES = ['auto', 'extreme-wide', 'wide', 'full', 'medium', 'closeup'];
+  const TRANSITIONS = ['auto', 'cut', 'dissolve', 'dip-white', 'iris', 'wipe'];
   /** Timed body actions, limited to what this character's rig can do. Unusable ones are reported, not silently dropped. */
   const cleanActions = (raw, rig, name, dropped) => {
     const ok = new Set(movesFor(rig).map((m) => m.id));
@@ -747,6 +949,7 @@ export function registerStudio(app, ctx) {
       const actors = rawActors.map((a) => {
         const pos = vec(a.pos, [0, 0, 0.5]); const asset = byId[Number(a.card_id)];
         const out = { card_id: Number(a.card_id), pos, rot: [0, num(a.rot_y, -Math.PI, Math.PI, 0), 0], scale: num(a.scale, 0.2, 4, 1), motion: cleanMotion(a.motion, pos) };
+        if (a.face_travel === false) out.face_travel = false;
         const actions = cleanActions(a.actions, asset.body_rig, asset.name, dropped);
         if (actions.length) out.actions = actions;
         return out;
@@ -765,7 +968,12 @@ export function registerStudio(app, ctx) {
       if (preset === 'closeup' || preset === 'follow') camera.target = Math.round(num(c.target, 0, Math.max(0, actors.length - 1), 0));
       if (c.distance != null) camera.distance = num(c.distance, 0.5, 2, 1);
       if (c.height != null) camera.height = num(c.height, -1, 3, 0);
+      if (SHOT_SIZES.includes(c.size)) camera.size = c.size;
+      if (TRANSITIONS.includes(c.transition)) camera.transition = c.transition;
+      if ((preset === 'closeup' || preset === 'follow' || ['medium', 'closeup'].includes(camera.size)) && camera.target == null) camera.target = Math.round(num(c.target, 0, Math.max(0, actors.length - 1), 0));
       const light = typeof x.lighting === 'string' ? x.lighting : x.lighting?.preset;
+      const look = {};
+      for (const [k, opts] of Object.entries(LOOK_KEYS)) if (k !== 'transition' && opts.includes(x.landscape?.[k])) look[k] = x.landscape[k];
       const setting = locIds.has(Number(x.setting_card_id)) ? { card_id: Number(x.setting_card_id) } : {};
       if (setting.card_id) {
         if (x.setting_scale != null) setting.scale = num(x.setting_scale, 0.4, 3, 1);
@@ -774,7 +982,7 @@ export function registerStudio(app, ctx) {
       }
       shots.push({ title: String(x.title || `Lines ${from + 1}-${to + 1}`).slice(0, 80), line_from: from, line_to: to,
         setting, actors, camera,
-        lighting: { preset: LIGHT_TYPES.includes(light) ? light : 'day' }, notes: String(x.notes || '').slice(0, 400) });
+        lighting: { preset: LIGHT_TYPES.includes(light) ? light : 'day', ...(Object.keys(look).length ? { look } : {}) }, notes: String(x.notes || '').slice(0, 400) });
     }
     if (!shots.length) throw new HttpError(502, 'Claude did not return a usable shot plan. Try again, or use the offline proposal.');
     if (next <= last) shots[shots.length - 1].line_to = last; // never leave lines uncovered
@@ -825,12 +1033,12 @@ export function registerStudio(app, ctx) {
       if (req.body.revise === true && !message.trim()) throw new HttpError(400, 'Write what Claude should correct first.');
       const current = req.body.revise === true ? sceneShotsFor(epId).map((s) => ({ title: s.title, line_from: s.line_from, line_to: s.line_to,
         setting_card_id: s.setting?.card_id ?? null, setting_scale: s.setting?.scale, setting_rot_y: s.setting?.rot_y, setting_offset: s.setting?.offset,
-        actors: (s.actors || []).map((a) => ({ card_id: a.card_id, pos: a.pos, rot_y: a.rot?.[1] || 0, scale: a.scale, motion: a.motion, actions: a.actions || [],
+        actors: (s.actors || []).map((a) => ({ card_id: a.card_id, pos: a.pos, rot_y: a.rot?.[1] || 0, scale: a.scale, motion: a.motion, actions: a.actions || [], ...(a.face_travel === false ? { face_travel: false } : {}),
           look_at_card_id: Number.isInteger(a.look_at) ? s.actors[a.look_at]?.card_id ?? null : null, turn_to_card_id: Number.isInteger(a.turn_to) ? s.actors[a.turn_to]?.card_id ?? null : null })),
-        camera: s.camera, lighting: s.lighting?.preset, notes: s.notes })) : null;
-      const r = await providers.shotDirector({ channel: channel(), episode: ep, current, lines: timed, duration: audio?.duration || null, world: worldContext(), message,
+        camera: s.camera, lighting: s.lighting?.preset, landscape: s.lighting?.look, notes: s.notes })) : null;
+      const r = await providers.shotDirector({ channel: channel(), episode: ep, current, lines: timed, duration: audio?.duration || null, world: await worldFor(req.body.reference, { images: true }), message,
         assets: assets.map((a) => ({ card_id: a.card_id, name: a.name, kind: a.kind, body_rig: a.body_rig, moves: movesFor(a.body_rig).map((m) => m.id), walk: a.clips.some((c) => c.category === 'clip' && c.status === 'approved' && /walk|run/i.test(c.label)),
-          usages: cards[a.card_id]?.usages || [], description: cards[a.card_id]?.description || '' })) });
+          usages: cards[a.card_id]?.usages || [], description: `${cards[a.card_id]?.description || ''}${a.landscape && Object.keys(a.landscape).length ? ` [landscape around this place: ${JSON.stringify(a.landscape)}; use its time_of_day as the lighting]` : ''}` })) });
       const dropped = [];
       shots = cleanClaudeShots(r.shots, lines, assets, dropped);
       source = 'claude';

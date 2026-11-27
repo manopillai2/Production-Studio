@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { askReference } from '../reference.jsx';
+import LandscapeSection from './LandscapeSection.jsx';
 import { api } from '../api.js';
 import { useStudio, useAction, Confirm, Placeholder, ReviewBanner } from '../ui.jsx';
 import Viewer3D, { Thumb3D } from '../engine/Viewer3D.jsx';
-import { thumbnail } from '../engine/three-common.js';
+import { thumbnail, modelViews } from '../engine/three-common.js';
 import RecipeEditor from './RecipeEditor.jsx';
 
 const KIND_LABEL = { character: 'Characters', location: 'Scenery', prop: 'Props' };
@@ -33,16 +35,30 @@ export default function StageCast() {
     return c;
   }, [episode.id]);
   useEffect(() => { load(); api.get('/api/procedural/templates').then(setTemplates); api.get('/api/localai/status').then(setLocal).catch(() => {}); }, [load]);
-  const generating = cards.some((c) => c.status === 'generating');
+  const generating = cards.some((c) => c.status === 'generating' || ['queued', 'running'].includes(c.preview_job?.status));
   useEffect(() => { if (!generating) return; const t = setInterval(() => load().then(() => refreshEpisode()), 3000); return () => clearInterval(t); }, [generating, load, refreshEpisode]);
   const update = (c) => { setCards((cs) => cs.map((x) => (x.id === c.id ? c : x))); refreshEpisode(); };
 
   const analyze = (mode) => act(async () => {
-    const r = await api.post(`/api/episodes/${episode.id}/cards/analyze`, { mode });
+    const reference = mode === 'ai' ? await askReference('cast.analyze', 'Analyze the lyrics: characters, scenery & props') : undefined;
+    if (mode === 'ai' && !reference) return;
+    const r = await api.post(`/api/episodes/${episode.id}/cards/analyze`, { mode, reference });
     setCards(r.cards); refreshEpisode(); load();
     toast(`${r.cards.length} asset card(s) · ${r.source === 'claude' ? 'Claude' : 'offline'} analysis · Meshy calls made: ${r.meshy_calls}`);
   });
   const unsaved = cards.filter((c) => c.status === 'approved' && !c.saved_at);
+  const checkable = cards.filter((c) => c.model_url);
+  const [checking, setChecking] = useState(null);
+  /** Claude looks at every model and says whether it matches its name (one Claude call per model). */
+  const checkAll = async () => {
+    for (let i = 0; i < checkable.length; i++) {
+      const c = checkable[i]; setChecking(`${i + 1}/${checkable.length}: ${c.name}`);
+      try { const images = await modelViews(c.model_url); update(await api.post(`/api/cards/${c.id}/look-check`, { images })); }
+      catch (e) { toast(`${c.name}: ${e.message}`, 'error'); }
+    }
+    setChecking(null); load();
+    toast('Look check done. Cards that don’t match their name are marked ⚠.');
+  };
 
   return (
     <div className="stack">
@@ -56,6 +72,9 @@ export default function StageCast() {
           <div className="row wrap">
             <button className="btn primary" disabled={busy || !episode.approved_lyrics_id} onClick={() => analyze('offline')}>Analyze lyrics (offline)</button>
             <button className="btn" disabled={busy || !claudeOn || !episode.approved_lyrics_id} title={claudeOn ? 'Uses Claude (paid) — never Meshy' : 'Connect Claude to use this'} onClick={() => analyze('ai')}>✨ Analyze with Claude</button>
+            {checkable.length > 0 && (checking
+              ? <span className="pill info">Claude is checking {checking}…</span>
+              : <Confirm className="btn" disabled={busy || !claudeOn} title={claudeOn ? 'Claude looks at each model (paid Claude calls, never Meshy)' : 'Connect Claude to use this'} text={`Claude looks at pictures of all ${checkable.length} models and says whether each matches its name and description. That is ${checkable.length} Claude calls (no Meshy). Continue?`} onYes={checkAll}>👁 Check all models with Claude…</Confirm>)}
             <AddAsset onAdd={(b) => act(async () => { const c = await api.post(`/api/episodes/${episode.id}/cards`, b); setCards((cs) => [...cs, c]); setOpen(c.id); }, 'Asset card added')} />
           </div>
         </div>
@@ -77,6 +96,8 @@ export default function StageCast() {
         return (
           <div key={kind}>
             <h4>{KIND_LABEL[kind]}</h4>
+            {kind === 'location' && <p className="small muted kind-help"><b>Scenery</b> is the set the characters stand on (a meadow, a lane, a room). You don't need to model the far distance: in Stage 4 the app puts a <b>landscape</b> around every scenery (sky, clouds, far hills, trees, flowers), and you can change it under <b>Look</b>.</p>}
+            {kind === 'prop' && <p className="small muted kind-help"><b>Props</b> are things in the scene (a bicycle, a kite, balloons). Sun, moon, stars and clouds work as props or characters placed in the sky.</p>}
             <div className="asset-grid">
               {list.map((c) => {
                 const [cls, label] = cardStatus(c);
@@ -87,6 +108,9 @@ export default function StageCast() {
                       <b>{c.name}</b>
                       <span className={`pill ${cls}`}>{label}</span>
                       <small className="muted">{c.usages.length ? `Lines ${c.usages.map((i) => i + 1).join(', ')}` : 'Not in current lyrics'} · {METHODS.find((m) => m[0] === c.method)?.[1] || c.method}</small>
+                      {c.look_check && !c.look_check.stale && (c.look_check.verdict === 'match'
+                        ? <small className="lc ok">✓ Claude: looks right</small>
+                        : <small className={`lc ${c.look_check.verdict}`} title={c.look_check.issues.join('\n')}>⚠ Looks like: {c.look_check.looks_like}</small>)}
                     </div>
                   </button>
                 );
@@ -95,6 +119,8 @@ export default function StageCast() {
           </div>
         );
       })}
+      {episode.approved_lyrics_id && <LandscapeSection episode={episode} cards={cards} />}
+
       {!cards.length && <div className="empty">No asset cards yet. Click <b>Analyze lyrics</b>, or add one manually.</div>}
 
       {open && cards.find((c) => c.id === open) && (
@@ -169,6 +195,7 @@ function CardEditor({ card, lines, templates, local, anyGenerating, update, onDe
   };
   useEffect(() => { if (meshyConfirm && card.kind === 'character' && !rigType) checkRig(); }, [meshyConfirm]); // eslint-disable-line react-hooks/exhaustive-deps
   const [rigHeight, setRigHeight] = useState('');
+  const [fromPreview, setFromPreview] = useState(true);
   const [credits, setCredits] = useState(null);
   const ref = useRef();
   const dirtyText = ['name', 'description', 'signature', 'prompt', 'texture_prompt', 'pose', 'user_notes'].some((k) => (f[k] ?? '') !== (card[k] ?? (k === 'pose' ? 'none' : '')));
@@ -301,19 +328,27 @@ function CardEditor({ card, lines, templates, local, anyGenerating, update, onDe
                 <select value={f.pose} onChange={(e) => setF({ ...f, pose: e.target.value })}><option value="none">Natural pose</option><option value="a-pose">A-pose (if you'll rig it in Stage 4)</option><option value="t-pose">T-pose</option></select>
                 <button className="btn small" disabled={busy || !claudeOn} title={claudeOn ? 'Claude only — no Meshy call' : 'Connect Claude'} onClick={() => act(async () => {
                   if (dirtyText) await api.put(`/api/cards/${card.id}`, f);
-                  const r = await api.post(`/api/cards/${card.id}/draft-prompt`, {}); update(r); setF((x) => ({ ...x, prompt: r.prompt, texture_prompt: r.texture_prompt, signature: r.signature || x.signature }));
+                  const reference = await askReference('cast.prompt', `Draft the Meshy prompt for “${card.name}”`); if (!reference) return;
+                  const r = await api.post(`/api/cards/${card.id}/draft-prompt`, { reference }); update(r); setF((x) => ({ ...x, prompt: r.prompt, texture_prompt: r.texture_prompt, signature: r.signature || x.signature }));
                 }, 'Claude drafted the Meshy prompt (no Meshy call)')}>✨ Draft prompt with Claude</button>
                 <button className="btn small" disabled={!meshyOn} title="Makes one free Meshy request" onClick={() => act(async () => setCredits(await api.post('/api/meshy/balance', {})))}>Check Meshy credits</button>
                 {credits && <span className="small muted">{credits.balance} credits left</span>}
                 {dirtyText && <button className="btn small" onClick={save}>Save prompt</button>}
               </div>
               <MeshyFinalPrompt card={card} />
+              {meshyOn && <MeshyPreview card={card} busy={busy} dirtyText={dirtyText} rigBody={{ rig: card.kind === 'character' && rigIt && rigType !== 'none', rig_type: rigType || undefined }} update={update} />}
               {!meshyOn && <Placeholder>Meshy not connected — add your key in AI Connections (Build Locally and Import work without it)</Placeholder>}
               {meshyOn && !meshyConfirm && (
                 <button className="btn meshy-btn" disabled={busy || card.status === 'generating' || dirtyText || !f.prompt.trim()} title={dirtyText ? 'Save the prompt first' : card.status === 'generating' ? 'This card is already generating' : ''} onClick={() => setMeshyConfirm(true)}>Generate in Meshy…</button>
               )}
               {meshyConfirm && (
                 <div className="confirm-box">
+                  {card.preview?.image_path && (
+                    <div className="row wrap preview-choice">
+                      <label className="check"><input type="radio" checked={fromPreview} onChange={() => setFromPreview(true)} /> Build from the preview image (the model follows that picture)</label>
+                      <label className="check"><input type="radio" checked={!fromPreview} onChange={() => setFromPreview(false)} /> Build from the prompt (Meshy text to 3D; may differ from the preview)</label>
+                    </div>
+                  )}
                   This submits <b>one paid Meshy job</b> for “{card.name}”: shape + texture (about 30 credits){card.kind === 'character' && rigIt && rigType !== 'none' ? <> + <b>{rigType === 'quadruped' ? 'four-legged' : 'two-legged'} rigging</b> (about 5 credits more)</> : ''}. Continue?
                   {card.kind === 'character' && (
                     <div className="rig-choice">
@@ -340,7 +375,7 @@ function CardEditor({ card, lines, templates, local, anyGenerating, update, onDe
                   {card.kind === 'character' && rigIt && rigType === 'quadruped' && <div className="hint">For a four-legged rig it is modelled <b>standing on all four legs</b> with clear gaps between them, so Meshy's animal walk and run fit it.</div>}
                   <div className="row">
                     <button className="btn danger" disabled={busy} onClick={() => { setMeshyConfirm(false); act(async () => {
-                      const r = await fetch(`/api/cards/${card.id}/generate`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-User-Action': 'generate-in-meshy' }, body: JSON.stringify({ confirm: true, rig: card.kind === 'character' && rigIt && rigType !== 'none', rig_type: rigType || 'biped', ...(rigIt && rigHeight ? { height_meters: Number(rigHeight) } : {}) }) });
+                      const r = await fetch(`/api/cards/${card.id}/generate`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-User-Action': 'generate-in-meshy' }, body: JSON.stringify({ confirm: true, from_preview: !!(fromPreview && card.preview?.image_path), rig: card.kind === 'character' && rigIt && rigType !== 'none', rig_type: rigType || 'biped', ...(rigIt && rigHeight ? { height_meters: Number(rigHeight) } : {}) }) });
                       const j = await r.json(); if (!r.ok) throw new Error(j.error); update(j); reload();
                     }, card.kind === 'character' && rigIt ? 'Submitted to Meshy — model + rig' : 'Submitted to Meshy — one job'); }}>Yes, generate in Meshy</button>
                     <button className="btn ghost" onClick={() => setMeshyConfirm(false)}>Cancel</button>
@@ -372,13 +407,73 @@ function CardEditor({ card, lines, templates, local, anyGenerating, update, onDe
               </div>
               {card.status === 'approved' && !card.saved_at && <div className="hint warn">Approved · Not saved to My World — this clears only after the library copy is saved.</div>}
               {card.saved_at && <div className="hint ok">Saved in My World as “{card.library?.name}” {card.library?.version_label} — reusable in any project without regenerating.</div>}
+              <LookCheck card={card} update={update} claudeOn={claudeOn} />
               <PartColors card={card} call={call} busy={busy} />
               <Revisions card={card} call={call} busy={busy} />
               <FutureTools />
             </div>
           </div>
+          <ReviewFeedback card={card} claudeOn={claudeOn} update={update} onRevised={(c) => { setF((x) => ({ ...x, prompt: c.prompt || '', texture_prompt: c.texture_prompt || '', signature: c.signature || x.signature })); setMethod('meshy'); }} />
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Under the result: the direction this version was made from, and a box for your review notes.
+ * Notes are kept on the version; with Claude connected they also revise the Meshy prompt (Claude only, no Meshy call).
+ * Claude keeps applying all earlier notes in every later draft.
+ */
+function ReviewFeedback({ card, claudeOn, update, onRevised }) {
+  const { toast } = useStudio();
+  const [act, busy] = useAction();
+  const [text, setText] = useState('');
+  const rev = card.revisions?.find((r) => r.id === card.revision_id) || card.revisions?.[0];
+  if (!rev) return null;
+  const d = rev.direction;
+  const send = (revise) => act(async () => {
+    const reference = revise ? await askReference('cast.feedback', `Revise the prompt for “${card.name}” from your feedback`) : undefined;
+    if (revise && !reference) return;
+    const c = await api.post(`/api/cards/${card.id}/feedback`, { feedback: text, revise, reference });
+    update(c); setText('');
+    if (c.revised) { onRevised(c); toast('Claude revised the Meshy prompt from your notes. Check it in the Meshy tab, then preview or generate.'); }
+    else toast('Feedback saved on this version');
+  });
+  return (
+    <div className="review-feedback">
+      <h4>Direction for this result · #{rev.n}</h4>
+      {d ? (
+        <div className="stack small">
+          <div className="row wrap">
+            <span className="tag">{d.from_preview ? 'Built from the preview image' : 'Built from the prompt'}</span>
+            {d.pose && d.pose !== 'none' && <span className="tag">{d.pose}</span>}
+            {d.rig && <span className="tag">rig: {d.rig === 'quadruped' ? 'four-legged' : 'two-legged'}</span>}
+          </div>
+          <div className="row wrap direction-body">
+            {d.preview_image && <a href={`/media/${d.preview_image}`} target="_blank" rel="noreferrer"><img className="direction-img" src={`/media/${d.preview_image}`} alt="Preview image this model was built from" /></a>}
+            <div className="grow stack">
+              <div className="muted">Prompt sent to Meshy{d.from_preview ? ' (it made the preview image)' : ''}</div>
+              <pre className="final-prompt">{d.prompt || '—'}</pre>
+              {!d.from_preview && <div className="muted">Texture: {d.texture_prompt || '—'}</div>}
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="small muted">{rev.method === 'meshy' ? 'The exact prompt for this older result was not recorded.' : `${rev.note || rev.method}. Its settings are in the tab above.`}{card.prompt ? <> Current Meshy prompt: <i>{card.prompt}</i></> : ''}</div>
+      )}
+      {rev.feedback?.length > 0 && (
+        <ul className="feedback-list small">{rev.feedback.map((f, i) => <li key={i}><span className="muted mono">{f.at?.slice(5, 16).replace('T', ' ')}</span> {f.text}</li>)}</ul>
+      )}
+      <label className="field"><span>Your feedback: what should change? <em className="muted">(Claude changes only what you mention and keeps everything else)</em></span>
+        <textarea rows={3} value={text} placeholder="e.g. Make the ears longer and floppier. Petals more orange. Remove the extra bud on the left." onChange={(e) => setText(e.target.value)} /></label>
+      <div className="row wrap">
+        {claudeOn
+          ? <button className="btn primary small" disabled={busy || !text.trim()} title="Claude only. No Meshy call, no credits" onClick={() => send(true)}>✨ Revise prompt with Claude</button>
+          : <span className="small muted">Connect Claude to have your notes rewrite the prompt.</span>}
+        <button className="btn small" disabled={busy || !text.trim()} onClick={() => send(false)}>Save note only</button>
+        <span className="small muted">Then preview or generate again. Nothing is sent to Meshy until you click there.</span>
+      </div>
     </div>
   );
 }
@@ -404,6 +499,57 @@ function StyleBanners({ card, call, busy }) {
       )}
       {u && <div className="small muted">Signature: <b>{u.signature}</b>{u.closest ? ` · closest locked design: ${u.closest.name} (${Math.round(u.closest.score * 100)}% alike, limit ${Math.round(u.limit * 100)}%)` : ' · no similar locked designs'}</div>}
     </>
+  );
+}
+
+/**
+ * A Meshy concept image made from exactly what “Generate in Meshy” will send (same prompt, pose and body shape),
+ * so you can see what to expect before paying for a 3D model. About 3 credits.
+ */
+function MeshyPreview({ card, busy, dirtyText, rigBody, update }) {
+  const { toast } = useStudio();
+  const [confirm, setConfirm] = useState(false);
+  const [plan, setPlan] = useState(null);
+  const [sending, setSending] = useState(false);
+  const pv = card.preview; const job = card.preview_job;
+  const running = ['queued', 'running'].includes(job?.status);
+  const bodyKey = JSON.stringify(rigBody);
+  useEffect(() => { api.post(`/api/cards/${card.id}/meshy-plan`, rigBody).then(setPlan).catch(() => setPlan(null)); }, [card.id, card.prompt, card.texture_prompt, card.updated_at, bodyKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  const stale = pv && plan && pv.settings && pv.settings !== plan.settings;
+  const start = async () => {
+    setConfirm(false); setSending(true);
+    try {
+      const r = await fetch(`/api/cards/${card.id}/meshy-preview`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-User-Action': 'preview-in-meshy' }, body: JSON.stringify({ confirm: true, ...rigBody }) });
+      const j = await r.json(); if (!r.ok) throw new Error(j.error); update(j); toast('Preview requested from Meshy');
+    } catch (e) { toast(e.message, 'error'); } finally { setSending(false); }
+  };
+  return (
+    <div className="meshy-preview">
+      <div className="row wrap">
+        <b className="small">Preview before you generate</b>
+        {!confirm && <button className="btn small" disabled={busy || sending || running || dirtyText} title={dirtyText ? 'Save the prompt first' : 'Meshy draws a picture from exactly the prompt above (about 3 credits)'} onClick={() => setConfirm(true)}>👁 {pv ? 'New preview' : 'Preview in Meshy'} (~3 credits)</button>}
+        {confirm && (
+          <span className="row wrap">
+            <span className="small">Meshy draws one picture from the prompt above, about <b>3 credits</b>. Continue?</span>
+            <button className="btn small primary" onClick={start}>Yes, preview</button>
+            <button className="btn small ghost" onClick={() => setConfirm(false)}>Cancel</button>
+          </span>
+        )}
+        {running && <span className="small muted">{job.message || 'Making the preview…'}</span>}
+        {job?.status === 'error' && <span className="small error-text">{job.message}</span>}
+      </div>
+      {pv?.image_path && (
+        <div className="row wrap preview-body">
+          <a href={`/media/${pv.image_path}`} target="_blank" rel="noreferrer"><img className="preview-img" src={`/media/${pv.image_path}`} alt={`Meshy preview of ${card.name}`} /></a>
+          <div className="stack small">
+            {stale
+              ? <div className="hint warn">The prompt, pose or body type changed after this preview. Make a new preview to see the current version.</div>
+              : <div className="hint ok">Matches what will be sent now.</div>}
+            <span className="muted">Not happy? Edit the prompt or your ideas, then <b>Draft prompt with Claude</b> and preview again. Happy? <b>Generate in Meshy</b> and choose “Build from the preview image” so the model follows this picture.</span>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -451,6 +597,7 @@ function Revisions({ card, call, busy }) {
         {card.revisions.map((r, i) => (
           <li key={r.id} className={i === 0 ? 'current' : ''}>
             <b>#{r.n}</b> <span className="tag">{r.method}</span> <span className="small">{r.note}</span> <span className="muted small mono">{r.created_at?.slice(5, 16)}</span>
+            {r.feedback?.length > 0 && <div className="small muted">Your notes: {r.feedback.map((f) => f.text).join(' · ')}</div>}
             {i > 0 && <button className="btn tiny" disabled={busy} onClick={() => call(() => api.post(`/api/cards/${card.id}/revisions/${r.id}/restore`), `Restored revision ${r.n}`)}>Restore</button>}
           </li>
         ))}
@@ -499,6 +646,34 @@ function LocalAiPanel({ card, local, busy, call }) {
         <button className="btn" disabled={busy || !cap('texture')?.available || !card.model_url} title={cap('texture')?.note} onClick={() => call(() => api.post(`/api/cards/${card.id}/local-ai`, { action: 'texture' }), 'Local AI texture refinement started')}>Refine texture</button>
       </div>
       {!local.ready && <small className="muted">Build Locally, Import Model and My World keep working without Local AI. Setup steps are in the README.</small>}
+    </div>
+  );
+}
+
+/** Claude looks at the model (front and side pictures) and says whether it matches the card's name and description. */
+function LookCheck({ card, update, claudeOn }) {
+  const { toast } = useStudio();
+  const [busy, setBusy] = useState(false);
+  const lc = card.look_check;
+  const run = async () => {
+    setBusy(true);
+    try { const images = await modelViews(card.model_url); update(await api.post(`/api/cards/${card.id}/look-check`, { images })); }
+    catch (e) { toast(e.message, 'error'); } finally { setBusy(false); }
+  };
+  return (
+    <div className={`look-check ${lc && !lc.stale ? lc.verdict : ''}`}>
+      <div className="row wrap">
+        <b className="small">Does it look like “{card.name}”?</b>
+        <button className="btn tiny" disabled={busy || !claudeOn} title={claudeOn ? 'One Claude call (no Meshy)' : 'Connect Claude to use this'} onClick={run}>{busy ? 'Claude is looking…' : lc ? '↻ Check again' : '👁 Check with Claude'}</button>
+      </div>
+      {lc && (
+        <div className="small">
+          {lc.stale && <div className="muted">This check was for an earlier model. Check again.</div>}
+          <div><b>{lc.verdict === 'match' ? '✓ Matches.' : lc.verdict === 'partly' ? '◐ Partly matches.' : '✗ Does not match.'}</b> It looks like: {lc.looks_like}</div>
+          {lc.issues?.length > 0 && <ul>{lc.issues.map((x, i) => <li key={i}>{x}</li>)}</ul>}
+          {lc.suggestion && <div className="muted">{lc.suggestion}</div>}
+        </div>
+      )}
     </div>
   );
 }

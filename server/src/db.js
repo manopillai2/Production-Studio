@@ -209,8 +209,13 @@ addCol('asset_cards', 'recipe', `TEXT`);                      // editable proced
 addCol('asset_cards', 'mapping', `TEXT DEFAULT '{}'`);        // {template, applied[], unsupported[], message}
 addCol('asset_cards', 'ref_image_path', `TEXT`);              // reference image for Local AI
 addCol('asset_cards', 'revision_id', `INTEGER`);              // revision currently shown
+addCol('asset_cards', 'preview', `TEXT`);                     // Meshy preview image {image_path, prompt, settings, task_id, at}
 addCol('asset_cards', 'user_notes', `TEXT DEFAULT ''`);       // the user's own ideas for this asset — Claude must follow them
-addCol('episodes', 'cast_notes', `TEXT DEFAULT '{}'`);        // {characters, scenery}: the user's ideas for Stage 2 — Claude must follow them
+addCol('episodes', 'cast_notes', `TEXT DEFAULT '{}'`);
+addCol('episodes', 'look', `TEXT DEFAULT '{}'`);
+addCol('asset_cards', 'look_check', `TEXT`);
+addCol('asset_cards', 'landscape', `TEXT`);       // scenery only: the landscape around this place {sky, clouds, hills, trees, dressing, ground, hill_tint, time_of_day, why}
+addCol('episodes', 'landscape_plan', `TEXT`);      // Stage 2: Claude's / the offline plan of where the story happens {plan, at, source, reference}       // Claude's check that the model matches its name: {verdict, looks_like, issues[], suggestion, at, model_path}              // Stage 4 project look: landscape (sky, clouds, hills, trees, dressing), title/end cards, karaoke, default transition        // {characters, scenery}: the user's ideas for Stage 2 — Claude must follow them
 db.exec(`
 CREATE TABLE IF NOT EXISTS card_revisions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -226,6 +231,8 @@ CREATE TABLE IF NOT EXISTS card_revisions (
 
 addCol('card_revisions', 'style_version', `TEXT`);
 addCol('card_revisions', 'rig', `TEXT`);
+addCol('card_revisions', 'direction', `TEXT`); // what this result was made from: {prompt, texture_prompt, from_preview, preview_image, pose, rig}
+addCol('card_revisions', 'feedback', `TEXT`);  // the user's review notes on this result: [{text, at}]
 addCol('asset_cards', 'rig_type', `TEXT`); // biped | quadruped | none — which skeleton this character needs (Claude decides; user can override)
 addCol('asset_cards', 'rig_note', `TEXT`); // why // Meshy rig made with this result: {rig, clips:[{name,path}], meshy_rig_task_id, created} // which World Style version produced this result
 

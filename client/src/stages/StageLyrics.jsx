@@ -67,8 +67,9 @@ export default function StageLyrics() {
         scope="lyrics" episodeId={episode.id} title="Lyrics assistant"
         intro={<>Describe your idea (“an elephant and a monkey playing by the river, teaching counting to 5”) and I'll write the lyrics in {langLabel} for a {mmss(target)} video. Then ask for tweaks: “make the chorus catchier”, “simpler words”, “add a verse about the mountain”.</>}
         chips={['Write a rhyme about…', `Fit it to ${mmss(target)}`, 'Make the chorus catchier', 'Simpler words for toddlers', 'Add a counting verse', 'Add action cues for every line']}
-        send={async (message) => {
-          const r = await api.post(`/api/episodes/${episode.id}/assistant/lyrics`, { message, lyrics_id: selId });
+        refAction="lyrics.assistant"
+        send={async (message, reference) => {
+          const r = await api.post(`/api/episodes/${episode.id}/assistant/lyrics`, { message, lyrics_id: selId, reference });
           setEpisode(r.episode);
           if (r.lyrics_id) { setSelId(r.lyrics_id); setCompare(null); }
           return r;
