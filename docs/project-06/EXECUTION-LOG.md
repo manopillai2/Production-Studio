@@ -120,3 +120,13 @@ Caveats: most studies are about classrooms, books, toys or background TV, not an
 - **Machine:** Edge (started again) and Microsoft Teams (background) were closed at the user's request; VS Code stays open because Claude Code runs inside it.
 
 Meshy credits this round: **0**.
+
+## Round 3 preview — VERIFIED (27 Nov 2026)
+- File: `storage/media/exports/episode-17/2026-11-27T23-43-50-1080p/mira-and-mango-playground-party-1080p.mp4` (94.7 MB; gitignored like the other Project 06 previews).
+- H.264 1920×1080, 30 fps, 212.37 s · AAC · −15.7 LUFS (identical to the song). Rendered in headless Chrome (GPU) in 15.5 min (816 s frames + encoding).
+- 18 frames checked from the MP4 (crane intro, run, merry-go-round, seesaw, close-up, jump, balloons, slide, ball, kite ×2, nod, wave goodbye, ball game, swing, slide, final merry-go-round, end card).
+- The first attempt was rendered in Edge and stalled at frame 390 because memory was low (about 2 GB free, and two renders ran at once). Fix: close Edge and render headless, alone.
+- Status: **Awaiting User Review**. Not approved, not published.
+
+## World Style updated (same day, at the user's request)
+The World Style now has "kids-first rules" at the top and model-making rules for Meshy. It describes sceneries as open stages, a painted closed mouth, and no gripping, moving hair or moving-part props from Meshy. The colour profile is brighter (foliage `#6CC45E`, far hills `#5FC8B0`, water `#4FC6E0`, 6 flower colours). The studio-wide default look is focus, with no houses, no birds, calm wind and few clouds. Before and after copies are in `docs/world-style/`. Note: re-rendering Projects 05/06 will now give brighter grass and hills.
