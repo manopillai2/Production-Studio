@@ -8,7 +8,7 @@ import { LOOK_DEFAULTS, LOOK_OPTIONS } from '../engine/Landscape.js';
 import { movesFor, moveById, RIG_LABEL } from '../engine/moveCatalog.js';
 
 const MOTION_HELP = {
-  none: 'Stands still', rise: 'Rises up into place (e.g. Sunny rising)', drift: 'Drifts sideways with a gentle bob (e.g. a cloud)',
+  none: 'Stands still', rise: 'Rises up into place (e.g. Sunny rising)', float: 'Floats up and away (balloons, bubbles)', drift: 'Drifts sideways with a gentle bob (e.g. a cloud)',
   bounce: 'Hops along a path (e.g. Pip bouncing)', twinkle: 'Pulses in size (e.g. stars)', spin: 'Turns around', sway: 'Rocks gently side to side', path: 'Walks or glides to a target position',
   circle: 'Walks around a point (e.g. circling the group)',
 };
@@ -447,6 +447,7 @@ function ShotEditor({ shot, index, total, scene, times, patch, onMerge, onSplit,
             <label className="field"><span>Movement</span>
               <select value={a.motion?.type || 'none'} onChange={(e) => setMotion(ai, { type: e.target.value })}>{MOTIONS.map((m) => <option key={m} value={m}>{m} — {MOTION_HELP[m]}</option>)}</select>
             </label>
+            {a.motion?.type === 'float' && <><Slider label="Float height" value={a.motion.amount ?? 3} min={0.5} max={8} onChange={(v) => setMotion(ai, { amount: v })} /><Slider label="Float time (s)" value={a.motion.duration ?? 4} min={0.5} max={12} onChange={(v) => setMotion(ai, { duration: v })} /><Slider label="Lift off after (s)" value={a.motion.delay ?? 0} min={0} max={10} onChange={(v) => setMotion(ai, { delay: v })} /></>}
             {a.motion?.type === 'rise' && <><Slider label="Rise height" value={a.motion.amount ?? 3} min={0.5} max={8} onChange={(v) => setMotion(ai, { amount: v })} /><Slider label="Rise time (s)" value={a.motion.duration ?? 4} min={0.5} max={12} onChange={(v) => setMotion(ai, { duration: v })} /><Slider label="Delay (s)" value={a.motion.delay ?? 0} min={0} max={6} onChange={(v) => setMotion(ai, { delay: v })} /></>}
             {a.motion?.type === 'drift' && <><Slider label="Distance" value={a.motion.dx ?? 4} min={-15} max={15} onChange={(v) => setMotion(ai, { dx: v })} /><Slider label="Bob" value={a.motion.bob ?? 0.1} min={0} max={0.6} step={0.02} onChange={(v) => setMotion(ai, { bob: v })} /></>}
             {a.motion?.type === 'bounce' && <><Slider label="Ends at X" value={a.motion.to?.[0] ?? 3} min={-10} max={10} onChange={(v) => setMotion(ai, { to: [v, a.motion.to?.[1] ?? a.pos?.[1] ?? 0, a.motion.to?.[2] ?? a.pos?.[2] ?? 0] })} /><Slider label="Hop height" value={a.motion.height ?? 0.7} min={0.1} max={3} onChange={(v) => setMotion(ai, { height: v })} /><Slider label="Hops" value={a.motion.hops ?? 4} min={1} max={16} step={1} fmt={(v) => v} onChange={(v) => setMotion(ai, { hops: v })} /></>}

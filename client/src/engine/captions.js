@@ -68,31 +68,83 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
 }
 
-/** A big rounded card that pops in and fades out (title and end cards). */
+/**
+ * Title and end text, cartoon style, with no box: big bubbly letters, each in a bright colour, with a thick white
+ * outline, a dark edge and a soft shadow. The letters pop in one after another, then float gently like a wave;
+ * a few sparkles twinkle around them. k = seconds since it started, out = 0→1 while it leaves.
+ */
+const RAINBOW = ['#FF5A5F', '#FF9F1C', '#FFD23F', '#3DDC84', '#2EC4F1', '#7B6CF6', '#FF66C4'];
 function card(ctx, w, h, { text, sub, k, out, colors }) {
-  const pop = easeOutBack(clamp01(k / 0.5)); const alpha = clamp01(k / 0.25) * (1 - clamp01(out));
-  if (alpha <= 0) return;
-  ctx.save(); ctx.globalAlpha = alpha;
-  const size = Math.round(h * 0.1); ctx.font = `800 ${size}px ${FONT}`; ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
+  const leave = clamp01(out); const alpha = 1 - leave;
+  if (alpha <= 0 || k < 0) return;
+  ctx.save();
+  const size = Math.round(h * 0.115); ctx.font = `800 ${size}px ${FONT}`; ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
   const lines = []; let row = '';
-  for (const word of String(text).split(/\s+/)) { const t = row ? `${row} ${word}` : word; if (row && ctx.measureText(t).width > w * 0.72) { lines.push(row); row = word; } else row = t; }
+  for (const word of String(text).split(/\s+/)) { const t = row ? `${row} ${word}` : word; if (row && ctx.measureText(t).width * 1.08 > w * 0.82) { lines.push(row); row = word; } else row = t; }
   if (row) lines.push(row);
-  const tw = Math.max(...lines.map((l) => ctx.measureText(l).width));
-  const subSize = Math.round(size * 0.38);
-  const cw = tw + size * 1.4, ch = lines.length * size * 1.15 + size * 0.9 + (sub ? subSize * 1.6 : 0);
-  ctx.translate(w / 2, h * 0.27); ctx.scale(pop, pop); // upper third: over the sky, not the characters
-  ctx.shadowColor = 'rgba(0,0,0,0.25)'; ctx.shadowBlur = size * 0.4; ctx.shadowOffsetY = size * 0.12;
-  ctx.fillStyle = colors.primary || '#FF7A59'; roundRect(ctx, -cw / 2, -ch / 2, cw, ch, size * 0.5); ctx.fill();
-  ctx.shadowColor = 'transparent';
-  ctx.lineWidth = size * 0.08; ctx.strokeStyle = colors.accent || '#FFD23F'; roundRect(ctx, -cw / 2 + size * 0.15, -ch / 2 + size * 0.15, cw - size * 0.3, ch - size * 0.3, size * 0.4); ctx.stroke();
-  const top = -ch / 2 + size * 0.45 + size * 0.575;
-  lines.forEach((l, i) => {
-    const y = top + i * size * 1.15;
-    ctx.lineWidth = size * 0.16; ctx.lineJoin = 'round'; ctx.strokeStyle = colors.text || '#2B2140'; ctx.strokeText(l, 0, y);
-    ctx.fillStyle = '#FFFFFF'; ctx.fillText(l, 0, y);
+  const palette = [colors.primary, colors.accent, ...RAINBOW].filter((c, i, a) => c && a.indexOf(c) === i);
+  const lineH = size * 1.12; const cy = h * 0.25 - ((lines.length - 1) * lineH) / 2; // upper third: over the sky, not the characters
+  let n = 0;
+  const glyphs = [];
+  lines.forEach((l, r) => {
+    const gap = size * 0.035; // a little air between the bubbly letters, more between words
+    const chars = [...l]; const widths = chars.map((c) => ctx.measureText(c).width + (c === ' ' ? size * 0.12 : gap)); const total = widths.reduce((a, b) => a + b, 0);
+    let x = w / 2 - total / 2;
+    chars.forEach((c, i) => { glyphs.push({ c, x: x + widths[i] / 2, y: cy + r * lineH, i: n++ }); x += widths[i]; });
   });
-  if (sub) { ctx.font = `700 ${subSize}px ${FONT}`; ctx.fillStyle = colors.text || '#2B2140'; ctx.fillText(sub, 0, top + lines.length * size * 1.15 - size * 0.25 + subSize * 0.6); }
+  // sparkles behind the letters
+  const spark = (sx, sy, s, rot) => { ctx.save(); ctx.translate(sx, sy); ctx.rotate(rot); ctx.beginPath(); for (let j = 0; j < 8; j++) { const rr = j % 2 ? s * 0.32 : s; const a = (j * Math.PI) / 4; ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr); } ctx.closePath(); ctx.fill(); ctx.restore(); };
+  const S = [[-0.36, -0.13], [0.37, -0.1], [-0.3, 0.09], [0.31, 0.11], [-0.08, -0.17], [0.12, 0.15], [0.43, 0.02], [-0.44, 0.0]];
+  ctx.globalAlpha = alpha;
+  S.forEach(([sx, sy], j) => {
+    const tw = clamp01((k - 0.3 - j * 0.12) / 0.3) * (0.55 + 0.45 * Math.sin(k * 3 + j * 1.7));
+    if (tw <= 0) return;
+    ctx.fillStyle = j % 2 ? '#FFF6B0' : '#FFFFFF'; ctx.globalAlpha = alpha * tw;
+    spark(w / 2 + sx * w, h * 0.25 + sy * h + (lines.length - 1) * lineH * Math.sign(sy) * 0.5, size * (0.18 + 0.1 * (j % 3)), k * 0.8 + j);
+  });
+  ctx.globalAlpha = alpha;
+  for (const g of glyphs) {
+    if (g.c === ' ') continue;
+    const kk = k - g.i * 0.045; // one letter after another
+    if (kk <= 0) continue;
+    const pop = easeOutBack(clamp01(kk / 0.45));
+    const fly = leave > 0 ? clamp01(leave * 1.6 - (g.i % 7) * 0.05) : 0; // letters hop away at the end
+    const bob = Math.sin(k * 2.4 - g.i * 0.45) * size * 0.07;
+    const rot = Math.sin(k * 1.7 - g.i * 0.6) * 0.06;
+    ctx.save();
+    ctx.translate(g.x, g.y + bob - fly * size * 0.8);
+    ctx.rotate(rot); ctx.scale(pop * (1 - fly * 0.4), pop * (1 - fly * 0.4));
+    ctx.globalAlpha = alpha * clamp01(kk / 0.12);
+    ctx.lineJoin = 'round';
+    ctx.shadowColor = 'rgba(40,20,60,0.35)'; ctx.shadowBlur = size * 0.14; ctx.shadowOffsetY = size * 0.08;
+    ctx.lineWidth = size * 0.3; ctx.strokeStyle = colors.text || '#3A2350'; ctx.strokeText(g.c, 0, 0); // dark edge
+    ctx.shadowColor = 'transparent';
+    ctx.lineWidth = size * 0.17; ctx.strokeStyle = '#FFFFFF'; ctx.strokeText(g.c, 0, 0); // white outline
+    const fill = palette[g.i % palette.length];
+    const grad = ctx.createLinearGradient(0, -size * 0.45, 0, size * 0.45);
+    grad.addColorStop(0, mixHex(fill, '#FFFFFF', 0.35)); grad.addColorStop(0.55, fill); grad.addColorStop(1, mixHex(fill, '#000000', 0.12));
+    ctx.fillStyle = grad; ctx.fillText(g.c, 0, 0);
+    ctx.fillStyle = 'rgba(255,255,255,0.55)'; // a little shine on each letter
+    ctx.beginPath(); ctx.ellipse(-size * 0.1, -size * 0.2, size * 0.09, size * 0.045, -0.5, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+  if (sub) {
+    const kk = k - glyphs.length * 0.045 - 0.1;
+    if (kk > 0) {
+      const subSize = Math.round(size * 0.36);
+      ctx.save(); ctx.globalAlpha = alpha * clamp01(kk / 0.3);
+      ctx.font = `700 ${subSize}px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
+      const y = cy + (lines.length - 1) * lineH + size * 0.95 + (1 - clamp01(kk / 0.3)) * subSize * 0.5;
+      ctx.lineWidth = subSize * 0.32; ctx.strokeStyle = colors.text || '#3A2350'; ctx.strokeText(sub, w / 2, y);
+      ctx.fillStyle = '#FFFFFF'; ctx.fillText(sub, w / 2, y);
+      ctx.restore();
+    }
+  }
   ctx.restore();
+}
+function mixHex(a, b, k) {
+  const p = (c) => { const m = String(c).replace('#', ''); const v = m.length === 3 ? m.split('').map((x) => x + x).join('') : m; return [0, 2, 4].map((i) => parseInt(v.slice(i, i + 2), 16) || 0); };
+  const A = p(a), B = p(b); return `rgb(${A.map((x, i) => Math.round(x + (B[i] - x) * k)).join(',')})`;
 }
 
 /**

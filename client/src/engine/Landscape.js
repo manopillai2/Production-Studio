@@ -79,8 +79,8 @@ function cloud(r, night) {
 }
 
 /** A ring of rolling hills (seen from the middle). Height varies around the ring; a gentle hump across its width. */
-function hillRing(r0, r1, height, color, seed, topColor) {
-  const g = new THREE.RingGeometry(r0, r1, 180, 8); g.rotateX(-Math.PI / 2);
+function hillRing(r0, r1, height, color, seed, topColor, carve = null) {
+  const g = new THREE.RingGeometry(r0, r1, carve ? 420 : 180, carve ? 12 : 8); g.rotateX(-Math.PI / 2);
   const pos = g.attributes.position; const colors = new Float32Array(pos.count * 3);
   const r = rnd(seed); const ph = [r() * 6.28, r() * 6.28, r() * 6.28]; const fr = [2 + Math.floor(r() * 3), 5 + Math.floor(r() * 4), 11 + Math.floor(r() * 5)];
   const c0 = col(color), c1 = col(topColor || color);
@@ -88,7 +88,7 @@ function hillRing(r0, r1, height, color, seed, topColor) {
     const x = pos.getX(i), z = pos.getZ(i); const d = Math.hypot(x, z); const a = Math.atan2(z, x);
     const across = Math.sin(Math.PI * Math.min(1, Math.max(0, (d - r0) / (r1 - r0))));
     const wave = 0.55 + 0.3 * Math.sin(a * fr[0] + ph[0]) + 0.15 * Math.sin(a * fr[1] + ph[1]) + 0.06 * Math.sin(a * fr[2] + ph[2]);
-    const y = height * Math.max(0, wave) * Math.pow(across, 0.8);
+    const y = height * Math.max(0, wave) * Math.pow(across, 0.8) * (carve ? carve(x, z) : 1);
     pos.setY(i, y - 0.05);
     const k = Math.min(1, y / (height || 1));
     const c = c0.clone().lerp(c1, k * 0.6); colors.set([c.r, c.g, c.b], i * 3);
@@ -100,7 +100,7 @@ function hillRing(r0, r1, height, color, seed, topColor) {
     const d = Math.hypot(x, z); const a = Math.atan2(z, x);
     const across = Math.sin(Math.PI * Math.min(1, Math.max(0, (d - r0) / (r1 - r0))));
     const wave = 0.55 + 0.3 * Math.sin(a * fr[0] + ph[0]) + 0.15 * Math.sin(a * fr[1] + ph[1]) + 0.06 * Math.sin(a * fr[2] + ph[2]);
-    return height * Math.max(0, wave) * Math.pow(across, 0.8) - 0.05;
+    return height * Math.max(0, wave) * Math.pow(across, 0.8) * (carve ? carve(x, z) : 1) - 0.05;
   };
   return { mesh: m, heightAt };
 }
@@ -156,7 +156,7 @@ function river({ zBase, winding, seed, preset }) {
   const amp = winding ? 6 : 2.2; const width = winding ? 6.5 : 5.5;
   const zAt = (x) => zBase + amp * Math.sin(x * 0.045 + ph1) + amp * 0.35 * Math.sin(x * 0.11 + ph2);
   const strip = (w, y, uvScale) => {
-    const N = 260, X0 = -175, X1 = 175; const pos = [], uv = [], idx = [];
+    const N = 300, X0 = -136, X1 = 136; const pos = [], uv = [], idx = [];
     for (let i = 0; i <= N; i++) { const x = X0 + ((X1 - X0) * i) / N; const z = zAt(x); pos.push(x, y, z - w / 2, x, y, z + w / 2); uv.push(x / uvScale, 0, x / uvScale, 1); if (i < N) { const a = i * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); } }
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setIndex(idx); g.computeVertexNormals();
     return g;
@@ -299,6 +299,12 @@ export function buildLandscape({ look, preset = 'day', roles = {}, setRadius = 8
   const groundColor = L.ground || mix(R.foliage, preset === 'night' ? '#1d3340' : '#A9D68A', preset === 'night' ? 0.55 : 0.45).getStyle();
   grp.add(ground(groundColor, seed));
 
+  // River behind the play area. Built before the hills: they open a valley for it, so it flows all the way to the horizon.
+  const riv = L.river && L.river !== 'none' ? river({ zBase: -(setRadius * 1.25 + 4.5), winding: L.river === 'winding', seed, preset }) : null;
+  if (riv) grp.add(riv.group);
+  const inRiver = (x, z, pad = 1) => !!riv && Math.abs(z - riv.zAt(x)) < riv.width / 2 + 1.5 + pad;
+  const valley = riv ? (x, z) => { const d = Math.abs(z - riv.zAt(x)); const d0 = riv.width / 2 + 2, d1 = d0 + 7 + Math.abs(x) * 0.1; const k = Math.min(1, Math.max(0, (d - d0) / (d1 - d0))); return k * k * (3 - 2 * k); } : null;
+
   // Hills: three rings, each farther one hazier (mixed toward the sky's horizon colour).
   const hillH = { none: 0, low: 0.55, rolling: 1, tall: 1.6 }[L.hills] ?? 1;
   const hillTint = L.hill_tint || R.foliage;
@@ -308,7 +314,7 @@ export function buildLandscape({ look, preset = 'day', roles = {}, setRadius = 8
     rings.forEach(([a, b, h, haze], i) => {
       const c = mix(mix(i === 0 ? hillTint : mix(hillTint, R.foliage_far, 0.3).getStyle(), '#9CCB7E', 0.3).getStyle(), p.haze || p.horizon, haze + (night ? 0.25 : 0));
       const top = c.clone().offsetHSL(0, 0, 0.05);
-      const ring = hillRing(a, b, h * hillH, c.getStyle(), seed * 31 + i, top.getStyle());
+      const ring = hillRing(a, b, h * hillH, c.getStyle(), seed * 31 + i, top.getStyle(), valley);
       grp.add(ring.mesh); ringsOut.push({ ...ring, r0: a, r1: b });
     });
   }
@@ -322,18 +328,16 @@ export function buildLandscape({ look, preset = 'day', roles = {}, setRadius = 8
       const ring = ringsOut[i % 3 === 2 && ringsOut[1] ? 1 : 0];
       const a = r() * Math.PI * 2; const d = ring.r0 + 3 + r() * (ring.r1 - ring.r0 - 6);
       const x = Math.cos(a) * d, z = Math.sin(a) * d;
-      pts.push({ x, z, y: ring.heightAt(x, z), s: (ring === ringsOut[0] ? 1.2 : 2.0) * (0.75 + r() * 0.6) });
+      const sc = (ring === ringsOut[0] ? 1.2 : 2.0) * (0.75 + r() * 0.6);
+      if (inRiver(x, z, 2.5)) continue; // no trees in the river valley
+      pts.push({ x, z, y: ring.heightAt(x, z), s: sc });
     }
     const crown = [mix(R.foliage, '#3F8F4A', 0.25).getStyle(), mix(R.foliage, R.foliage_far, 0.18).getStyle(), mix(R.foliage, '#2E7D4F', 0.45).getStyle(), mix(R.foliage, '#A6D86A', 0.3).getStyle()];
     treeSet = trees(pts, crown.map((c) => mix(c, p.haze || p.horizon, night ? 0.45 : 0.15).getStyle()));
     grp.add(treeSet.group);
   }
 
-  // River behind the play area (its own random sequence, so the rest of the landscape keeps its layout).
-  const r2 = rnd(seed * 104729 + 7);
-  const riv = L.river && L.river !== 'none' ? river({ zBase: -(setRadius * 1.25 + 4.5), winding: L.river === 'winding', seed, preset }) : null;
-  if (riv) grp.add(riv.group);
-  const inRiver = (x, z, pad = 1) => !!riv && Math.abs(z - riv.zAt(x)) < riv.width / 2 + 1.5 + pad;
+  const r2 = rnd(seed * 104729 + 7); // houses use their own random sequence, so the rest of the landscape keeps its layout
 
   // Set dressing just outside the scenery, never in the action area (keepClear = where characters stand or travel).
   const dressN = { none: 0, light: 70, lush: 170 }[L.dressing] ?? 70;

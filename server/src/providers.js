@@ -283,7 +283,8 @@ Only cast assets that fit the line being sung — but if the director's note ask
 WHAT EACH ACTOR CAN DO (three layers, all optional):
 1. Travel/placement motion (pick one per actor; whole-body movement across the scene):
 - none
-- rise {amount: metres it rises (1–5), duration: seconds, delay: seconds}
+- rise {amount: metres it rises (1–5), duration: seconds, delay: seconds}: comes UP INTO PLACE from below (a sun rising over a hill). Never use it for things that fly away.
+- float {amount: metres it floats up (1–8), duration: seconds, delay: seconds before lift-off, dx: drift sideways}: floats UP AND AWAY from where it stands (balloons, bubbles, a kite lifting). Time the delay so it lifts off when the lyric says so.
 - drift {dx: metres across the shot (-8–8), bob: 0–0.3, start: seconds to wait before moving}
 - bounce {to: [x,y,z] end point, height: 0.2–1.2, hops: 1–8, start}
 - twinkle {amount: 0.05–0.3, speed: 1–5}

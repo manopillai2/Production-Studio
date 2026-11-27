@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { clone as skeletonClone } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { loadGLTF, measureBox } from './three-common.js';
 import { analyseRig, buildClip, MOVES } from './MoveMaker.js';
-import { addFace, vocalEnvelope, mouthOpen } from './FaceRig.js';
+import { addFace, vocalEnvelope, mouthOpen, mouthShape } from './FaceRig.js';
 import { buildLandscape, blobShadowTexture, lookOf, SKY } from './Landscape.js';
 
 /** Shot start/end times from lyric timestamps (Stage 3). Gaps (instrumental breaks) belong to the shot before. */
@@ -32,7 +32,7 @@ export const LIGHTING = {
   sunset: { sky: '#FFA98A', fog: '#FFC6A8', hemiSky: '#FFD2B8', hemiGround: '#8F9A72', hemi: 1.0, sun: '#FF9A62', sunI: 1.8, sunPos: [7, 2.5, 3] },
   night: { sky: '#1E2752', fog: '#2A346A', hemiSky: '#8FA4FF', hemiGround: '#24304F', hemi: 0.55, sun: '#AFC2FF', sunI: 0.7, sunPos: [-3, 6, 4] },
 };
-export const MOTIONS = ['none', 'rise', 'drift', 'bounce', 'twinkle', 'spin', 'sway', 'path', 'circle'];
+export const MOTIONS = ['none', 'rise', 'float', 'drift', 'bounce', 'twinkle', 'spin', 'sway', 'path', 'circle'];
 /** Motions that carry a character across the ground (a rigged character walks or runs during them). */
 export const TRAVEL_MOTIONS = ['path', 'drift', 'bounce', 'circle'];
 export const CAMERAS = ['wide', 'tilt-up', 'pan', 'dolly-in', 'closeup', 'follow', 'orbit', 'group'];
@@ -47,6 +47,12 @@ export const TRANSITIONS = ['auto', 'cut', 'dissolve', 'dip-white', 'iris', 'wip
 export const TRANSITION_LABEL = { auto: 'Auto', cut: 'Cut', dissolve: 'Dissolve (cross-fade)', 'dip-white': 'Dip to white', iris: 'Iris (circle)', wipe: 'Wipe (curtain)' };
 
 const ease = (x) => { const c = Math.min(1, Math.max(0, x)); return 1 - (1 - c) ** 3; };
+/**
+ * Fraction of a walk covered at time fraction k (0..1) of a D-second walk: speed up for ~0.4 s, steady, slow down for
+ * ~0.4 s. The walk cycle uses the SAME curve, so the feet never slide and never walk on the spot.
+ */
+export const travelK = (k, D) => { const a = Math.min(0.25, 0.4 / Math.max(0.1, D)); k = Math.min(1, Math.max(0, k)); const v = 1 / (1 - a);
+  if (k < a) return (0.5 * v * k * k) / a; if (k > 1 - a) return 1 - (0.5 * v * (1 - k) * (1 - k)) / a; return v * (k - a / 2); };
 const lerp = (a, b, k) => a + (b - a) * k;
 
 // ---- Placement: generated models arrive at arbitrary sizes, centred on their middle. ----
@@ -156,6 +162,15 @@ export function motionAt(actor, u, D) {
   const pos = [...base]; const rot = [...(actor.rot || [0, 0, 0])]; let s = Number(actor.scale ?? 1); let sy = 1;
   switch (m.type) {
     case 'rise': { const p = ease((u - (m.delay || 0)) / Math.max(0.1, m.duration || D)); pos[1] = base[1] - (m.amount ?? 3) * (1 - p); break; }
+    case 'float': { // hovers on its string (gentle bob and rock), then lifts off and floats up and away, swaying
+      const x = Math.max(0, u - (m.delay || 0)) / Math.max(0.1, m.duration || 4); const p = x < 1 ? x * x * (2 - x) : 1 + (x - 1) * 0.9;
+      const sway = Math.min(1, x * 2);
+      pos[1] = base[1] + (m.amount ?? 3) * p + Math.sin(u * 1.6) * 0.07 + Math.sin(u * 0.7 + 2) * 0.03;
+      pos[0] = base[0] + Math.sin(u * 0.9) * (0.05 + 0.2 * sway) + (m.dx ?? 0.6) * Math.min(1, x);
+      pos[2] = base[2] + Math.sin(u * 0.75 + 1) * (0.03 + 0.1 * sway);
+      rot[2] = (rot[2] || 0) + Math.sin(u * 1.2) * (0.05 + 0.07 * sway); // radians: a few degrees of rocking
+      rot[0] = (rot[0] || 0) + Math.sin(u * 0.95 + 1.3) * 0.04;
+      break; }
     case 'drift': pos[0] = base[0] + (m.dx ?? 4) * (u / D); pos[1] = base[1] + Math.sin(u * 1.3) * (m.bob ?? 0.1); break;
     case 'bounce': {
       const k = u / D; const to = m.to || [base[0] + 4, base[1], base[2]];
@@ -168,7 +183,7 @@ export function motionAt(actor, u, D) {
     case 'twinkle': s *= 1 + (m.amount ?? 0.12) * Math.sin(u * (m.speed ?? 3) * Math.PI * 2); break;
     case 'spin': rot[1] += (m.speed ?? 1) * u; break;
     case 'sway': rot[2] += Math.sin(u * (m.speed ?? 1.5) * Math.PI) * (m.amount ?? 0.08); break;
-    case 'path': { const k = ease(u / D); const to = m.to || base; for (let i = 0; i < 3; i++) pos[i] = lerp(base[i], to[i], k); break; }
+    case 'path': { const k = travelK(u / D, D); const to = m.to || base; for (let i = 0; i < 3; i++) pos[i] = lerp(base[i], to[i], k); break; }
     case 'circle': { // walk around a centre point, facing the way it goes (counter-clockwise seen from above)
       const c = m.center || [base[0] + 1.5, 0, base[2]]; const r = Math.hypot(base[0] - c[0], base[2] - c[2]) || 1.5;
       const a0 = Math.atan2(base[0] - c[0], base[2] - c[2]); const ang = a0 + 2 * Math.PI * Number(m.turns ?? 1) * Math.min(1, Math.max(0, u / D));
@@ -341,7 +356,7 @@ export class SceneEngine {
             const clip = cg.animations.find((x) => x.name === a.clip.name) || cg.animations[0];
             mixer = new THREE.AnimationMixer(obj0); mixer.clipAction(clip).play(); clipDur = clip.duration || 1;
             const w = this._wrap(group, obj0, a, mixer, clipDur, asset.kind);
-            if (face) { w.face = face; w.usages = asset.usages || []; }
+            w.usages = asset.usages || []; if (face) w.face = face;
             actors.push(w);
             continue;
           }
@@ -355,7 +370,7 @@ export class SceneEngine {
           if (body) {
             const face = a.face !== false ? addFace(body.obj, body.head, `${asset.card_id}:${body.key}`, seed, { quad: body.rig.quad }) : null; // before posing: needs the rest pose
             const w = this._wrap(group, body.obj, a, body.mixer, 1, asset.kind);
-            if (face) { w.face = face; w.usages = asset.usages || []; }
+            w.usages = asset.usages || []; if (face) w.face = face;
             w.body = body; w.autoLabel = body.label;
             if (body.travel) w.motionActor = { ...w.motionActor, travel: body.travel };
             actors.push(w); continue;
@@ -424,7 +439,12 @@ export class SceneEngine {
     if (!rig) { rig = analyseRig(skeletonClone(src.scene)); this._rigs.set(key, rig); }
     if (!rig.biped && !rig.quad && !walkClip) return null; // unknown skeleton: keep the static model
     const obj = skeletonClone(src.scene); const mixer = new THREE.AnimationMixer(obj);
-    const body = { key, obj, mixer, rig, start, travel: null, walk: null, idle: null, actions: [], phase: rnd(1) * 10, head: rig.map.head ? obj.getObjectByName(rig.map.head.name) : null };
+    const body = { key, obj, mixer, rig, start, travel: null, walk: null, idle: null, actions: [], phase: rnd(1) * 10, head: rig.map.head ? obj.getObjectByName(rig.map.head.name) : null, motionType: m.type, life: new Map() };
+    // Ground contact: how high the ankles sit above the soles in the rest pose (to keep the standing foot on the floor).
+    if (rig.biped) {
+      const feet = ['lFoot', 'rFoot'].map((k) => rig.map[k] && obj.getObjectByName(rig.map[k].name)).filter(Boolean);
+      if (feet.length === 2) { obj.updateMatrixWorld(true); const minY = measureBox(obj).min.y; body.feet = feet; body.footRest = Math.min(...feet.map((f) => f.getWorldPosition(new THREE.Vector3()).y)) - minY; }
+    }
     const labels = [];
     if (walkClip) {
       const pace = (running ? 2.6 : 1.1) * Number(a.scale || 1) * (0.94 + 0.12 * rnd(2)); // each character walks at its own pace
@@ -465,12 +485,17 @@ export class SceneEngine {
   /** Blend this character's layers for shot time u: walk while travelling, idle when standing, actions on top. */
   _poseBody(a, u) {
     const B = a.body; const fade = (x, w) => Math.min(1, Math.max(0, x / w));
+    // Undo last frame's life-layer turns first: the mixer only rewrites a bone when its animated value changes, so
+    // without this the small turns would pile up frame after frame (a head that slowly spins round).
+    if (B.life) for (const [bone, r] of B.life) { bone.quaternion.copy(r.base); r.turned = false; }
     let walkW = 0;
     if (B.walk) {
       if (B.travel != null) { const t0 = B.start, t1 = B.start + B.travel; walkW = Math.min(fade(u - t0 + 0.15, 0.3), fade(t1 - u + 0.15, 0.4)); }
       else walkW = 1;
       if (!B.idle) walkW = 1; // nothing else to stand with
-      const wt = Math.max(0, u - B.start) * B.walk.speed + B.phase;
+      // The walk cycle advances with the distance covered (same speed curve as the position): no sliding, no walking on the spot.
+      const tt = Math.max(0, u - B.start);
+      const wt = (B.travel != null && B.motionType === 'path' ? travelK(tt / B.travel, B.travel) * B.travel : tt) * B.walk.speed + B.phase;
       B.walk.action.time = (wt % B.walk.dur + B.walk.dur) % B.walk.dur;
     }
     let actW = 0;
@@ -479,10 +504,22 @@ export class SceneEngine {
       x.action.time = Math.min(x.dur, Math.max(0, u - x.at));
       x.action.setEffectiveWeight(w * (1 - actW)); actW = Math.min(1, actW + w);
     }
-    const base = 1 - actW;
+    const base = 1 - actW; B.actW = actW; B.walkW = walkW;
     if (B.walk) B.walk.action.setEffectiveWeight(base * walkW);
     if (B.idle) { B.idle.action.setEffectiveWeight(base * (1 - (B.walk ? walkW : 0))); B.idle.action.time = ((u + B.phase) % B.idle.dur + B.idle.dur) % B.idle.dur; }
     B.mixer.update(0);
+    // Ground contact: keep the lower foot on the floor (the poses and the walk clip don't know where the floor is).
+    // Sinking is always corrected; a small float is pulled down, a real jump (well above the floor) is left alone.
+    if (B.feet) {
+      if (B.baseY == null) B.baseY = B.obj.position.y;
+      B.obj.position.y = B.baseY; B.obj.updateMatrixWorld(true);
+      const par = B.obj.parent; const v = new THREE.Vector3();
+      const low = Math.min(...B.feet.map((f) => (par ? par.worldToLocal(f.getWorldPosition(v)) : f.getWorldPosition(v)).y));
+      const gap = low - B.footRest; const h = B.rig.height || 1;
+      const k = Math.min(1, Math.max(0, (gap - 0.025 * h) / (0.05 * h))); const keep = k * k * (3 - 2 * k);
+      const dy = gap < 0 ? -gap : -gap * (1 - keep);
+      if (Math.abs(dy) > 1e-5) { B.obj.position.y = B.baseY + dy; B.obj.updateMatrixWorld(true); }
+    }
   }
 
   /** Normalise an actor: standing actors get their feet at y=0, sky objects are centred; then sized by kind. */
@@ -548,6 +585,7 @@ export class SceneEngine {
     const { start, length: D } = this.times[k]; const u = Math.max(0, t - start);
     this._poseActors(g, u, D);
     this._poseFaces(g, t);
+    this._alive(g, t);
     this._camera(g, u, D, g.camAdjust);
     this._skyInFrame(g);
     this._light(g);
@@ -611,13 +649,67 @@ export class SceneEngine {
    * Blinks always; mouths move while a lyric line is sung. The characters the line belongs to (Stage 2 usage) sing it;
    * if none of them is in this shot, everyone in the shot sings along.
    */
+  /**
+   * The "life" layer, on top of whatever clip is playing (idle, walk, a move): the chest breathes, the head keeps
+   * looking around a little, and a character who is singing moves the head with the words, bobs on the loud
+   * syllables and tilts differently on each line. Everything is a function of song time, so preview = export.
+   */
+  _alive(g, t) {
+    const bodies = g.actors.filter((a) => a.body?.rig && a.body.obj);
+    if (!bodies.length) return;
+    const line = this.lines.find((l) => t >= l.start && t < l.end) || null;
+    const own = line ? bodies.filter((a) => a.usages?.includes(line.i)) : [];
+    const singers = new Set(own.length ? own : line ? g.actors.filter((a) => a.face) : []);
+    const env = this.env;
+    const loud = (x) => { if (!env) return 0.5; const k = Math.floor(x * env.rate); let v = 0; for (let j = 0; j < 6; j++) v += (env.env[k - j] ?? 0) / 6; return v; };
+    const Qc = new THREE.Quaternion(), qd = new THREE.Quaternion(), bw = new THREE.Quaternion(), e = new THREE.Euler();
+    bodies.forEach((a, k) => {
+      const B = a.body; const M = (B.vis ||= Object.fromEntries(Object.entries(B.rig.map).map(([key, b]) => [key, B.obj.getObjectByName(b.name)]).filter(([, b]) => b?.isBone))); const ph = (B.phase || 0) + k * 1.7;
+      B.obj.updateMatrixWorld(true); B.obj.getWorldQuaternion(Qc);
+      const calm = 1 - 0.7 * (B.actW || 0); // a big move (jump, wave …) owns the body; the life layer steps back
+      // rotate a bone by [x, y, z] degrees in the CHARACTER's frame (x = pitch down, y = turn left, z = tilt), on top of its pose
+      const turn = (bone, [x, y, z]) => {
+        if (!bone || (!x && !y && !z)) return;
+        let rec = B.life.get(bone); if (!rec) { rec = { base: new THREE.Quaternion() }; B.life.set(bone, rec); } if (!rec.turned) rec.base.copy(bone.quaternion); rec.turned = true;
+        qd.setFromEuler(e.set(THREE.MathUtils.degToRad(x), THREE.MathUtils.degToRad(y), THREE.MathUtils.degToRad(z), 'YXZ'));
+        qd.premultiply(Qc).multiply(Qc.clone().invert()); // into world
+        bone.getWorldQuaternion(bw);
+        bone.quaternion.multiply(bw.clone().invert().multiply(qd).multiply(bw));
+      };
+      const sing = !!line && singers.has(a);
+      const into = sing ? Math.min(1, (t - line.start) / 0.3, (line.end - t) / 0.3) : 0;
+      const v = sing ? loud(t) : 0;
+      const lineTilt = sing ? Math.sin(line.i * 2.3 + ph) : 0; // each line its own head tilt
+      const head = M.head || null, neck = M.neck || null;
+      if (B.rig.biped) {
+        const breathe = Math.sin(t * 1.55 + ph);
+        turn(M.spine2 || M.spine1 || M.spine, [-1.2 * breathe * calm, 0, 0]);
+        turn(M.lShoulder, [0, 0, 1.2 * breathe * calm]); turn(M.rShoulder, [0, 0, -1.2 * breathe * calm]);
+        // singing: head bobs down a little on loud syllables, nods with the phrase, tilts per line; small body sway
+        const nod = into * (6 * v - 2 + 2.5 * Math.sin(t * 2.6 + ph));
+        const lookY = (7 * Math.sin(t * 0.33 + ph) + 3 * Math.sin(t * 0.87 + ph * 2)) * (sing ? 0.6 : 1);
+        const tilt = into * 7 * lineTilt + 2 * Math.sin(t * 0.41 + ph);
+        turn(neck, [nod * 0.35 * calm, lookY * 0.35 * calm, tilt * 0.3 * calm]);
+        turn(head, [nod * 0.65 * calm, lookY * 0.65 * calm, tilt * 0.7 * calm]);
+        if (sing) turn(M.spine, [-2.5 * v * into * calm, 0, 2.2 * Math.sin(t * 1.3 + ph) * into * calm]);
+      } else if (B.rig.quad) {
+        // four legs: the head looks around and perks up, ears flick now and then
+        const lookY = 9 * Math.sin(t * 0.37 + ph) + 4 * Math.sin(t * 1.1 + ph * 2);
+        const perk = 4 * Math.sin(t * 0.9 + ph) + (sing ? 5 * v * into : 0);
+        turn(neck, [-perk * 0.4 * calm, lookY * 0.4 * calm, 0]); turn(head, [-perk * 0.6 * calm, lookY * 0.6 * calm, 3 * Math.sin(t * 0.6 + ph) * calm]);
+        const flick = Math.max(0, Math.sin(t * 0.8 + ph * 3)) ** 12 * 18;
+        turn(M.lEar, [flick, 0, 0]); turn(M.rEar, [Math.max(0, Math.sin(t * 0.8 + ph * 3 + 1.1)) ** 12 * 18, 0, 0]);
+      }
+    });
+  }
+
   _poseFaces(g, t) {
     const withFace = g.actors.filter((a) => a.face);
     if (!withFace.length) return;
     const line = this.lines.find((l) => t >= l.start && t < l.end) || null;
     const own = line ? withFace.filter((a) => a.usages?.includes(line.i)) : [];
     const singers = new Set(own.length ? own : withFace);
-    withFace.forEach((a, k) => a.face.pose(t, line && singers.has(a) ? mouthOpen(this.env, t, line, k * 1.3) : 0));
+    withFace.forEach((a) => a.face.pose(t, line && singers.has(a) ? mouthShape(this.env, t, line) : 0, null, this.renderer));
   }
   _poseActors(g, u, D, withClips = true) {
     const travelling = (x) => TRAVEL_MOTIONS.includes(x.motionActor.motion?.type);
@@ -654,6 +746,10 @@ export class SceneEngine {
       d = Math.max(-0.9, Math.min(0.9, d)) * ease(u / 0.6);
       const pq = head.parent.getWorldQuaternion(new THREE.Quaternion());
       const r = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), d);
+      // remember the value first: it is put back before the next frame (the mixer doesn't rewrite a bone whose animation
+      // value didn't change, so an extra turn would otherwise pile up frame after frame — a head spinning round)
+      const B = a.body; let rec = B.life.get(head); if (!rec) { rec = { base: new THREE.Quaternion() }; B.life.set(head, rec); }
+      if (!rec.turned) rec.base.copy(head.quaternion); rec.turned = true;
       head.quaternion.premultiply(pq.clone().invert().multiply(r).multiply(pq));
     });
   }

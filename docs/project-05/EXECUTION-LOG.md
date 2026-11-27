@@ -122,3 +122,51 @@ Feedback: the mouth sits near Mira's stomach; Mango's tail is disliked; no props
 - Frames checked from the MP4 at 0:10, 0:30, 1:26, 2:30 and 3:25: new meadow, kite and balloons; cottages around both places; the flowing river in the meadow wide shots; the mouth on Mira's face; captions and the end card in place.
 - Known small issue: in some close-ups the singing mouth shows a small dark mark at its right corner.
 - Status stays **Awaiting User Review**. Not approved, not published. The first preview (04-17-03) is kept for comparison.
+
+---
+
+# Round 3 — user feedback (27 Nov 2026)
+
+Feedback: lips, head, clapping, jumping and standing don't move like real; the title and end text should not be in a box; the lyric says balloons float but nothing floats; the river is cut and starts from nowhere; flawless movement and lip-sync expected.
+
+| Feedback | Cause | Fix |
+|---|---|---|
+| Lip-sync not real | The mouth was a dark oval that only opened and closed with loudness, smaller than the painted smile, so it read as a hole in a fixed grin. | `FaceRig.js`: real lip-sync. Each lyric line is split into sung syllables; each gets a mouth shape (ah, eh, ee, oh, oo, lips closed for m/b/p, teeth on lip for f/v, pursed for w), timed to the loudness peaks of the vocals and smoothed. The mouth is drawn each frame with lips, upper teeth and tongue, and **replaces** the painted smile while singing (a skin patch hides the painted one). |
+| Head and body movement robotic | Every keyframe eased to a full stop (`smoothstep` per segment), so moves went stop-start; between moves only the idle clip played. | `MoveMaker.js`: moves flow through their keyframes on a smooth spline (Catmull-Rom). `SceneEngine.js`: a new life layer on every rigged character: breathing, looking around, and while singing, head bobs on loud syllables, nods with the phrase, a different head tilt per line and a small body sway. Mango's head looks around and his ears flick. The layer steps back while a big move plays. |
+| Title/end text in a box | — | `captions.js`: no box. Big bubbly letters in rainbow colours with a white outline, a dark edge and a shine; letters pop in one by one, float in a gentle wave, hop away at the end, with sparkles around. |
+| Balloons don't float | **Bug**: the `rise` motion means "come up into place from below", so the balloons started underground and stopped at ground level. | New `float` motion (floats up and away, with sway and bobbing), added to the engine, the Stage 4 controls, the server and Claude's instructions. Shots 6 and 10 now lift the balloons off exactly when "Up float balloons" is sung; shot 6 widened to show it. Other balloon shots stay tethered. |
+| River cut | The river ran under the hill rings, so it appeared to start from the middle of a hillside. | `Landscape.js`: the hills open a valley for the river, so it flows all the way to the horizon; no trees in the valley. |
+
+Backup of all shots before this round: `docs/project-05/backup-scene-before-round3.json`.
+Meshy credits this round: 0.
+
+## Round 3 preview — VERIFIED (27 Nov 2026)
+- File: `storage/media/exports/episode-16/2026-11-27T14-49-38-1080p/mira-and-mango-up-and-down-1080p.mp4` (103.7 MB).
+- H.264 1920×1080, 30 fps, 212.37 s · AAC 212.36 s · −15.7 LUFS (identical to the Suno song).
+- Frames checked from the MP4: boxless rainbow title (0:02.5), singing mouth in close-up (0:28), balloons lifting off on "Up float balloons" (0:44.5), river through the valley to the horizon (1:26, 2:37.5), boxless end text (3:27).
+- Status stays **Awaiting User Review**. Not approved, not published.
+
+---
+
+# Round 4 — user feedback (27 Nov 2026)
+
+Feedback: mouth looks messed up; ankles, legs and hands don't bend; sometimes walking on the spot; characters not landing on the floor properly; balloons hide under the floor; the dog's head looks like it rotates 360°. Asked for a deep review before rendering.
+
+| Problem | Root cause (found by measuring, not guessing) | Fix |
+|---|---|---|
+| Dog head spins | **Bug:** the animation mixer only rewrites a bone when its animated value changes. The "look at Mira" head turn (and the new life layer) added a rotation on top every frame; while a move with no head track played (tail wag), nothing reset the head, so the turn piled up (measured: +51° per frame at the same moment). | Every extra head/neck/shoulder turn is now recorded and undone before the next frame (`_poseBody`), so the same moment always gives the same pose (verified: 53°, 53°, 53° on repeated renders). |
+| Life layer invisible | **Bug:** it turned the bones of the hidden analysis copy of the skeleton (`rig.map`), not the character on screen. | Uses the character's own bones. |
+| Mouth messy | The drawn mouth was a flat sticker floating in front of a curved face; teeth showed as a single tooth; shapes jumped. | The mouth is now **painted into Mira's skin texture** every frame, triangle by triangle (612 face triangles mapped to the texture, which Meshy cuts into many pieces), so it bends with the face and is lit like the cheeks. Calmer shapes, ~0.1 s smoothing, a proper band of upper teeth, wider opening while singing. |
+| Walking on the spot | Paths used an ease-out curve (fast start, slow stop) while the walk cycle stepped at a constant rate. | Speed-up / steady / slow-down profile shared by the position and the walk cycle: the cycle advances with the distance covered. |
+| Not landing on the floor | Poses and the walk clip don't know where the floor is. | Ground contact: the lower foot is kept on the floor (sinking always corrected, small floats pulled down, real jumps left alone). |
+| Stiff ankles and hands | Feet were always kept flat; hands never moved. | In the air the toes point down; crouching puts weight on the balls of the feet; wrists follow the forearms. (Mira's rig has **no finger bones**, so fingers cannot bend.) |
+| Balloons under the floor | **Bug:** the float motion's rocking was written in degrees but the engine uses radians: the bunch rocked ~100° and swung into the ground. Also they stood on the grass behind flowers. | Rocking in radians (a few degrees); balloons hover 0.5 m above the grass in every shot with a gentle bob, and float away on "Up float balloons". |
+
+Shots backup before round 3: `docs/project-05/backup-scene-before-round3.json`. Meshy credits this round: 0.
+
+## Round 5 — "the mouth looks strange while talking" (27 Nov 2026)
+Looked at full 1080p frames instead of small crops. Causes and fixes:
+- The singing mouth was about twice as wide as Mira's painted smile, with pointed corners and a thick red outline, so it grew suddenly into a "grin". → Redesigned: about the painted smile's width, a nearly flat top, a deep round bottom (a "D"), no hard outline, dark inside, pink tongue, soft band of upper teeth.
+- Red "horns" stayed visible while singing. A green test patch showed that the painted smile is **carved into the model** (a groove) and reaches further out and higher than the cover. → Triangles of the groove walls are now repainted too (they face up/down, not forward); triangles seen edge-on get a flat colour instead of being skipped; the cover was enlarged (still below the nose); the singing mouth starts just below the groove.
+- Speed: painting took ~150 ms a frame. → The face triangles are grouped into 18 small patches, the unchanging skin cover is drawn once, and the patch canvases stay in CPU memory (`willReadFrequently`), so uploading is a straight copy. Singing frames: ~25–33 ms (quiet ~13 ms).
+- To free memory for rendering, background apps were closed at the user's request: Edge (background startup boost), WhatsApp, Copilot, Lenovo Vantage helper. VS Code left open.

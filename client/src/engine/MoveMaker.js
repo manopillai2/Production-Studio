@@ -10,7 +10,8 @@ import { measureBox } from './three-common.js';
 const norm = (n) => String(n || '').toLowerCase().replace(/^.*[:|]/, '').replace(/[^a-z0-9]/g, '');
 const ALIASES = {
   hips: ['hips', 'pelvis', 'root', 'hip'], spine: ['spine', 'spine0'], spine1: ['spine01', 'spine1'], spine2: ['spine02', 'spine2', 'chest', 'upperchest'],
-  neck: ['neck', 'neck01'], head: ['head'],
+  neck: ['neck', 'neck01', 'neck1'], head: ['head'],
+  lToe: ['lefttoebase', 'lefttoe', 'ltoe'], rToe: ['righttoebase', 'righttoe', 'rtoe'],
   lShoulder: ['leftshoulder', 'lshoulder', 'leftclavicle'], lArm: ['leftarm', 'leftupperarm', 'lupperarm'], lFore: ['leftforearm', 'leftlowerarm', 'lforearm'], lHand: ['lefthand', 'lhand'],
   rShoulder: ['rightshoulder', 'rshoulder', 'rightclavicle'], rArm: ['rightarm', 'rightupperarm', 'rupperarm'], rFore: ['rightforearm', 'rightlowerarm', 'rforearm'], rHand: ['righthand', 'rhand'],
   lThigh: ['leftupleg', 'leftupperleg', 'leftthigh', 'lthigh'], lShin: ['leftleg', 'leftlowerleg', 'leftcalf', 'lcalf'], lFoot: ['leftfoot', 'lfoot'],
@@ -72,23 +73,41 @@ function expandPose(pose, rig) {
     if (k === 'rArmUp') { add('rArm', [0, 0, -(v - rig.armRest.r)]); continue; }
     add(k, v);
   }
-  // Keep feet flat on the ground when the legs bend.
-  for (const s of ['l', 'r']) { const th = out[`${s}Thigh`] || [0, 0, 0], sh = out[`${s}Shin`]?.[0] || 0; if (th[0] || sh || th[2]) add(`${s}Foot`, [-(th[0] + sh), 0, -th[2]]); }
+  // Keep feet flat on the ground when the legs bend; in the air (hips up) the toes point down instead, like a real jump.
+  const air = Math.min(1, Math.max(0, ((pose.up || 0) - 0.015) / 0.1));
+  for (const s of ['l', 'r']) {
+    const th = out[`${s}Thigh`] || [0, 0, 0], sh = out[`${s}Shin`]?.[0] || 0;
+    if (th[0] || sh || th[2]) add(`${s}Foot`, [-(th[0] + sh) * (1 - air), 0, -th[2]]);
+    if (air) { add(`${s}Foot`, [28 * air]); add(`${s}Toe`, [-12 * air]); }
+    else if ((pose.up || 0) < -0.03) add(`${s}Toe`, [-10 * Math.min(1, -(pose.up || 0) / 0.1)]); // crouching: weight on the balls of the feet
+  }
+  // Wrists follow the forearms a little (a straight, stiff hand looks like a stick).
+  for (const s of ['l', 'r']) { const f = out[`${s}Fore`]; if (f && !pose[`${s}Hand`]) add(`${s}Hand`, [f[0] * 0.22, 0, (f[2] || 0) * 0.3]); }
   return { rot: out, up: pose.up || 0, fwd: pose.fwd || 0, side: pose.side || 0 };
 }
 
 /** Interpolate between keyframes [{t, pose}] (t from 0 to 1). Arm "up" values default to the rest elevation. */
+// The motion flows THROUGH the keyframes (a smooth spline) instead of stopping dead at each one, the way an animator
+// keeps the arcs moving. The first and last keys (rest) still ease in and out, so moves blend with the idle.
 function sampleKeys(keys, u, rig) {
   let i = 0; while (i < keys.length - 2 && u > keys[i + 1].t) i++;
   const a = keys[i], b = keys[i + 1] || a;
-  const k = b.t > a.t ? ease(Math.min(1, Math.max(0, (u - a.t) / (b.t - a.t)))) : 0;
-  const pa = expandPose(a.pose, rig), pb = expandPose(b.pose, rig);
+  const h = b.t - a.t; const s = h > 0 ? Math.min(1, Math.max(0, (u - a.t) / h)) : 0;
+  const prev = keys[i - 1], next = keys[i + 2];
+  const P = [prev, a, b, next].map((k) => (k ? expandPose(k.pose, rig) : null));
+  const h00 = 2 * s ** 3 - 3 * s ** 2 + 1, h10 = s ** 3 - 2 * s ** 2 + s, h01 = -2 * s ** 3 + 3 * s ** 2, h11 = s ** 3 - s ** 2;
+  // Tangent at a key: the slope between its neighbours (Catmull-Rom), zero at the first/last key; 0.85 keeps arcs from overshooting.
+  const tan = (pm, p, pp, tm, tp) => (pm == null || pp == null ? 0 : (0.85 * (pp - pm)) / Math.max(1e-6, tp - tm));
+  const val = (get) => {
+    const v1 = get(P[1]), v2 = get(P[2]);
+    const m1 = i === 0 ? 0 : tan(P[0] && get(P[0]), v1, v2, prev?.t, b.t);
+    const m2 = !next ? 0 : tan(v1, v2, get(P[3]), a.t, next.t);
+    return h00 * v1 + h10 * h * m1 + h01 * v2 + h11 * h * m2;
+  };
   const rot = {};
-  for (const name of new Set([...Object.keys(pa.rot), ...Object.keys(pb.rot)])) {
-    const va = pa.rot[name] || [0, 0, 0], vb = pb.rot[name] || [0, 0, 0];
-    rot[name] = va.map((x, j) => x + (vb[j] - x) * k);
-  }
-  return { rot, up: pa.up + (pb.up - pa.up) * k, fwd: pa.fwd + (pb.fwd - pa.fwd) * k, side: pa.side + (pb.side - pa.side) * k };
+  const names = new Set(P.flatMap((p) => (p ? Object.keys(p.rot) : [])));
+  for (const name of names) rot[name] = [0, 1, 2].map((j) => val((p) => p?.rot[name]?.[j] || 0));
+  return { rot, up: val((p) => p?.up || 0), fwd: val((p) => p?.fwd || 0), side: val((p) => p?.side || 0) };
 }
 
 /** Wide, low martial-arts stance with fists up (k scales how deep). */

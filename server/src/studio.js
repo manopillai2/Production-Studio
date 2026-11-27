@@ -860,6 +860,7 @@ export function registerStudio(app, ctx) {
         const name = a.name.toLowerCase();
         let motion = { type: 'sway', amount: 0.08, speed: 1.5 };
         if (/sun|sunny/.test(name) && /rise|up|morning|wake/.test(text)) motion = { type: 'rise', amount: 4, duration: 4, delay: 0.3 };
+        else if (/balloon|bubble/.test(name) && /float|fly|flying|up|rise|away|high/.test(text)) motion = { type: 'float', amount: 3, duration: 4, delay: 1 };
         else if (/cloud/.test(name) || /drift|float|fly/.test(text) && sky) motion = { type: 'drift', dx: 6, bob: 0.1 };
         else if (/star|diamond|firefly|glow/.test(name) || (sky && /twinkl|shine|sparkl/.test(text))) motion = { type: 'twinkle', amount: 0.15, speed: 3 };
         else if (/bounc|hop|jump/.test(text) && !sky) motion = { type: 'bounce', to: [2.5 + k, 0, 0.5], height: 0.7, hops: 4 };
@@ -885,7 +886,7 @@ export function registerStudio(app, ctx) {
   };
 
   /** Claude's plan, checked against the engine: known assets only, known motions/cameras/lighting, numbers clamped, lines covered in order. */
-  const MOTION_TYPES = ['none', 'rise', 'drift', 'bounce', 'twinkle', 'spin', 'sway', 'path', 'circle'];
+  const MOTION_TYPES = ['none', 'rise', 'float', 'drift', 'bounce', 'twinkle', 'spin', 'sway', 'path', 'circle'];
   const CAMERA_TYPES = ['wide', 'tilt-up', 'pan', 'dolly-in', 'closeup', 'follow', 'orbit', 'group'];
   const SHOT_SIZES = ['auto', 'extreme-wide', 'wide', 'full', 'medium', 'closeup'];
   const TRANSITIONS = ['auto', 'cut', 'dissolve', 'dip-white', 'iris', 'wipe'];
@@ -921,6 +922,7 @@ export function registerStudio(app, ctx) {
     const type = MOTION_TYPES.includes(m?.type) ? m.type : 'none';
     switch (type) {
       case 'rise': return { type, amount: num(m.amount, 0.5, 6, 3), duration: num(m.duration, 0.5, 20, 4), delay: num(m.delay, 0, 10, 0) };
+      case 'float': return { type, amount: num(m.amount, 0.5, 8, 3), duration: num(m.duration, 0.5, 20, 4), delay: num(m.delay, 0, 30, 0), dx: num(m.dx, -4, 4, 0.6) };
       case 'drift': return { type, dx: num(m.dx, -10, 10, 4), bob: num(m.bob, 0, 0.4, 0.1), ...(num(m.start, 0, 60, 0) > 0 ? { start: num(m.start, 0, 60, 0) } : {}) };
       case 'bounce': return { type, to: vec(m.to, [pos[0] + 3, pos[1], pos[2]]), height: num(m.height, 0.1, 1.5, 0.7), hops: Math.round(num(m.hops, 1, 10, 4)), ...(num(m.start, 0, 60, 0) > 0 ? { start: num(m.start, 0, 60, 0) } : {}) };
       case 'twinkle': return { type, amount: num(m.amount, 0.02, 0.4, 0.15), speed: num(m.speed, 0.5, 6, 3) };

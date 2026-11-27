@@ -16,7 +16,8 @@ Contents
 10. Engineering lessons (bugs, tooling, Windows quirks)
 11. Costs and limits
 12. Checklist for the next project
-13. Known limitations and ideas for later
+13. Round 3: making movement and singing feel real
+14. Known limitations and ideas for later
 
 ---
 
@@ -222,9 +223,50 @@ Implementation lessons:
 8. **Export 1080p** with GPU and run the checks in section 9.
 9. **Log everything** in `docs/project-XX/EXECUTION-LOG.md`, then set the status to Awaiting User Review.
 
-## 13. Known limitations and ideas for later
+## 13. Round 3 lessons: making movement and singing feel real
 
-- Faces: no expressions on cue (only blinks and singing mouths). A small dark mark sometimes shows at the mouth corner.
+- **Lip-sync = shapes, not just opening.** A mouth that only opens with loudness looks like a puppet. Real lip-sync needs:
+  - **visemes**: ah, eh, ee, oh, oo, lips closed for m/b/p, teeth on the lip for f/v, pursed lips for w;
+  - **syllable timing**: syllables from the lyric text, snapped to the loudness peaks of the vocals;
+  - **smoothing**: the lips move slightly before the sound.
+
+  See `syllables()`, `syllablePlan()` and `mouthShape()` in `FaceRig.js`.
+- **The drawn mouth must replace the painted one.** A drawn mouth smaller than the painted smile reads as a hole in a fixed grin. While singing, cover the painted mouth with a soft skin-coloured patch and draw the full-size mouth (lips, teeth, tongue). The face finder anchors on the **bottom** of the painted mouth; the smile line sits about 0.3 mouth-widths above it.
+- **Don't stop at every keyframe.** Easing each segment (smoothstep) makes the speed zero at every key, so moves look robotic. Interpolate through the keys with a spline (Catmull-Rom, tangents scaled to 0.85 to avoid overshoot) and keep zero speed only at the first and last key, where the move blends with the idle.
+- **Characters need a life layer on top of every clip.** It covers breathing, looking around, and, while singing, head bobs on loud syllables, a head tilt per line and a small body sway. Apply it after the mixer as a rotation in the character's frame, compute everything from song time (deterministic), and scale it down while a big move plays.
+- **Check that the motion type means what the lyric says.** `rise` = comes up into place from below (a sun). `float` = floats up and away (balloons). Claude's prompt now spells out the difference. Time the lift-off to the lyric line (delay = line start − shot start).
+- **Landscape pieces must not intersect.** The river ran under the hill rings and seemed to start in the middle of a hill. When one feature crosses another, carve space for it: the hills now open a valley along the river.
+- **Titles look better as styled letters than as a box**: rainbow letter fills, a white outline and a dark edge, a staggered pop-in and a gentle wave.
+- **Verify motion with frame sequences** (e.g. 6 frames 0.15 s apart, cropped on the mouth), not single stills. Several crops were needed before the mouth was framed correctly.
+
+### Round 4 lessons (deep review)
+
+- **The three.js mixer skips bones whose animated value didn't change.** Anything you add on top of an animation (a look-at turn, breathing, head bobs) must be recorded and undone before the next `mixer.update`. Otherwise it piles up every frame whenever the clip holds still or the bone has no active track, and you get Mango's head spinning round. Test it: render the same moment 3 times; the pose must be identical.
+- **`rig.map` bones belong to the analysis copy of the skeleton.** Pose the character's own bones (look them up by name in `body.obj`).
+- **Units.** `motionAt` rotations are radians. A "6" meant as degrees rocked the balloons 340°.
+- **Walk cycle and position must share one speed curve.** An eased path with a constant-speed walk clip gives sliding at the start and walking on the spot at the end.
+- **Paint mouths into the texture, not on a floating plane.** Overlays on curved, textured faces float, cut through and light differently. Map each face triangle (3D position → mouth-plane coordinates; UV → texture pixels) and draw the mouth canvas into a copy of that texture region, then upload only that region with `renderer.copyTextureToTexture`. Meshy UVs are cut into many small pieces, so a regular grid can't be used: work per triangle.
+- **Measure before fixing.** Each "it looks wrong" in this round had a different measurable cause, found by printing bone angles in the running app and rendering the same time twice.
+- **Rig limits to tell the user about:** Meshy biped rigs have no finger bones (hands can't curl); quadruped rigs have a jaw bone (usable for barking later).
+
+### Round 5 lessons (the singing mouth)
+
+- **Judge faces at full resolution.** 1080p crops showed problems that 780-px thumbnails hid: a mouth twice the width of the painted smile, pointed corners and a thick outline.
+- **Match the character's own design.** The singing mouth should be about the painted smile's width: a cute "D" shape (nearly flat top, round bottom), dark inside, pink tongue, a soft band of upper teeth and no hard outline. A sudden bigger mouth reads as a strange grin.
+- **Use a colour test patch to find what's what.** Painting the cover bright green, then painting every mouth triangle green, proved the remaining red "horns" were the painted smile reaching beyond the cover.
+- **Meshy carves painted features into the mesh.** The smile is a groove. Its walls face up or down and are seen edge-on from the front, so:
+  - include those triangles (don't filter by "facing the camera" only);
+  - give triangles that project to slivers a flat colour instead of skipping them;
+  - start the drawn mouth just below the groove.
+- **Upload only small patches, from CPU canvases.** The face triangles are scattered over the texture. Group them into connected 32-px cells, so you upload 18 small patches instead of one 1900×1900 rectangle. Draw the never-changing skin cover once. Create the canvases with `getContext('2d', { willReadFrequently: true })` so `copyTextureToTexture` doesn't stall reading a GPU canvas. The result: ~150 ms → ~25–33 ms per singing frame.
+- **Profile before optimising.** Timing each step showed drawing took 2.4 ms and uploading took 87 ms.
+- **Memory on an 8 GB laptop.** Background apps (Edge startup boost, WhatsApp, Copilot) and Claude Code's low-memory reaper can stop long exports. Close them before exporting. An export stopped half-way leaves its job "running", which blocks the next export.
+
+## 14. Known limitations and ideas for later
+
+- Faces: no expressions on cue (blinks and singing mouths only). Lip-sync is spelling-based (no phoneme dictionary). Faint traces of the carved smile can show at the mouth corners. Four-legged characters (Mango) keep their painted mouth (his rig has a jaw bone that could be used).
+- Hands: Meshy biped rigs have no finger bones.
+- A stuck export job can only be cleared by restarting the server (no cancel button yet).
 - No hand contact: Mira can't hold the kite string or balloon ribbons. Props have no part animation.
 - Repeated chorus close-ups are still framed similarly. Shot Doctor could flag "same shot as the last chorus".
 - Shot Doctor idea: "action too small to see" when a gesture plays while the character covers less than 25% of the frame height.
