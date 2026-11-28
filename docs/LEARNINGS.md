@@ -398,6 +398,23 @@ General lessons from this round:
 - **An automatic "fixer" can create worse problems than the one it fixes.** Always compare with and without it before keeping it.
 - **Close unneeded apps before heavy work, and keep them closed.** Edge, Teams and Phone Link restart on their own.
 
+### Project 07 lessons (indoor home, Mommy and child)
+
+- **Read the exact prompt that was sent before re-trying a bad preview.** Both character previews came back in a meadow full of plush creatures, with the wrong clothes. The prompt stored in the job (`jobs.params`) showed why:
+  - the 800-character fitter kept the generic World Style summary (which said "Sculpted soft creatures") and dropped the card's clothing and "plain background" sentences;
+  - the rig stance was then pasted over the end, in animal wording ("two hind legs… front paws").
+
+  Now:
+  - the card's own description, the stance sentence and a "plain background, nothing else" sentence always survive;
+  - the summary only fills what's left;
+  - "creature" wording is never sent;
+  - humans get a human stance.
+
+  Check with `POST /api/cards/:id/meshy-plan` (free) before paying for a preview.
+- **Finger bones are per model.** With `include_fingers`, Meshy gave the child all five fingers (68 bones) but the mother only a thumb and middle finger (44 bones). Check the bone list (`glbinfo`) before planning hand grips; give a grip to the character with full fingers.
+- **The song can be measured for its beat**, not only its words: `docs/project-07/music/beats.py` (onset envelope + autocorrelation) gave 89.1 bpm. Time bobs, claps and steps to `beats.json`.
+- **Keep character card prompts at about 450 characters** when the character will be rigged. The stance and background sentences take about 310 of the 800.
+
 ## 14. Known limitations and ideas for later
 
 - Faces: no expressions on cue (blinks and singing mouths only). Lip-sync is spelling-based (no phoneme dictionary). Faint traces of the carved smile can show at the mouth corners. Four-legged characters (Mango) keep their painted mouth (his rig has a jaw bone that could be used).

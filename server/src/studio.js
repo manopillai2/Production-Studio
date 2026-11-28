@@ -39,12 +39,21 @@ export function registerStudio(app, ctx) {
   };
   const uniq = (card) => { try { return card.recipe ? uniquenessReport(JSON.parse(card.recipe), lockedRecipes(card)) : null; } catch { return null; } };
   /** Exactly what “Generate in Meshy” will send: card prompt + World Style summary + uniqueness clause (≤ 800 chars). */
-  const meshyPrompt = (c) => {
+  const meshyPrompt = (c, reserve = 0) => {
     let summary = channel().world_style_summary || '';
     // Scenery and props get only the non-character parts of the summary: "creatures, oversized heads, glossy eyes,
-    // fur tufts" made Meshy put little creatures into empty sets.
-    if (c.kind !== 'character') summary = summary.split(/(?<=\.)\s+/).filter((x) => !/creature|head|eye|cheek|fur|tuft|character/i.test(x)).join(' ');
-    const style = summary && !String(c.prompt || '').includes(summary.slice(0, 40)) ? ` World style: ${summary}` : '';
+    // fur tufts" made Meshy put little creatures into empty sets. "Creatures" is never sent, even for characters:
+    // it put plush creatures around a human mother and child (Project 07).
+    summary = summary.split(/(?<=\.)\s+/).filter((x) => !/creature/i.test(x) && (c.kind === 'character' || !/head|eye|cheek|fur|tuft|character/i.test(x))).join(' ');
+    // Preview images: ONE object on a plain background (World Style model rule); otherwise the picture's scenery becomes geometry.
+    const alone = c.kind === 'location' ? '' : ' Alone, centred, on a plain light background. No scenery, no other characters, animals or creatures.';
+    // The card's own prompt is the most important text: it is fitted first, and the World Style summary only fills what
+    // is left, by whole sentences (the old order cut a mother's clothing to keep the generic summary).
+    const base0 = String(c.prompt || '').trim();
+    const room = 800 - reserve - alone.length;
+    const sumSents = summary.split(/(?<=[.!?])\s+/); let sumFit = '';
+    for (const x of sumSents) { if (base0.length + ' World style: '.length + (sumFit + ' ' + x).trim().length > room) break; sumFit = `${sumFit} ${x}`.trim(); }
+    const style = sumFit.length >= 60 && !base0.includes(summary.slice(0, 40)) ? ` World style: ${sumFit}` : '';
     // No "clearly different from: <names>" list: it wasted the 800-character limit. Uniqueness is handled when
     // Claude writes the prompt (it sees every locked design), so the whole budget goes to describing this asset.
     const unique = '';
@@ -57,7 +66,7 @@ export function registerStudio(app, ctx) {
       for (const x of pos) { if ((out + ' ' + x + ' ' + negText).trim().length > max) break; out = `${out} ${x}`.trim(); }
       return `${out} ${negText}`.trim().slice(0, max);
     };
-    const base = fit(c.prompt, Math.max(200, 800 - style.length - unique.length));
+    const base = fit(c.prompt, Math.max(200, room - style.length - unique.length));
     // Meshy paints from the texture prompt alone, so it must say WHAT to colour, not just list colours
     // (a bare palette list made a whole house oat-cream). Describe the object, then ask for varied palette colours.
     const prof = currentProfile();
@@ -65,7 +74,7 @@ export function registerStudio(app, ctx) {
     const what = String(c.texture_prompt || '').trim() || base.replace(/World style:.*$/i, '').replace(/Original design, clearly different from:.*$/i, '').trim().slice(0, 360);
     const colourRule = palette ? ` Clearly different colours for each part (for example roof, walls, door, windows, trim, or fur, ears, paws), chosen from this palette: ${palette}. Golden yellow only for one small focal accent. Rich, warm colours, not monochrome.` : '';
     const tex = `${what}${colourRule}`.trim().slice(0, 600);
-    return { final: `${base}${style}${unique}`.slice(0, 800), base, style: style.trim(), unique: unique.trim(), texture: tex };
+    return { final: `${base}${style}${unique}${alone}`.slice(0, 800 - reserve), base, style: style.trim(), unique: unique.trim(), texture: tex };
   };
   const parseJSON = (t, d) => { try { return t ? JSON.parse(t) : d; } catch { return d; } };
   /** The direction a Meshy job was given (exact prompt sent, texture, preview image, pose, rig). */
@@ -617,7 +626,10 @@ export function registerStudio(app, ctx) {
     const req = { body };
     if (!c.prompt?.trim()) throw new HttpError(400, 'Write or review the Meshy prompt on this card first.');
     if (c.prompt.length > 800 || (c.texture_prompt || '').length > 800) throw new HttpError(400, 'Meshy prompts must be 800 characters or fewer.');
-    const mp = meshyPrompt(c); // always includes the World Style summary
+    const rigType0 = ['biped', 'quadruped'].includes(req.body.rig_type) ? req.body.rig_type : ['biped', 'quadruped'].includes(c.rig_type) ? c.rig_type : 'biped';
+    const rig0 = req.body.rig === true && c.kind === 'character' && req.body.rig_type !== 'none';
+    // Room for the stance sentence is reserved BEFORE fitting, so it never chops the description.
+    const mp = meshyPrompt(c, rig0 ? (rigType0 === "quadruped" ? 195 : 210) : 0); // always includes the World Style summary when it fits
     const rigType = ['biped', 'quadruped'].includes(req.body.rig_type) ? req.body.rig_type : ['biped', 'quadruped'].includes(c.rig_type) ? c.rig_type : 'biped';
     const rig = req.body.rig === true && c.kind === 'character' && req.body.rig_type !== 'none';
     if (rig && req.body.rig_type && req.body.rig_type !== c.rig_type) run('UPDATE asset_cards SET rig_type=?, rig_note=? WHERE id=?', rigType, 'Chosen by you', c.id);
@@ -627,7 +639,11 @@ export function registerStudio(app, ctx) {
     // Meshy's rig is a human (two-legged) skeleton: a character that will be rigged must be modelled standing upright,
     // or the walk folds its legs into the body. Four-legged wording is dropped for the rigged version.
     // The model must match the skeleton Meshy will put in it.
-    const BIPED_SHAPE = ' Standing upright on two hind legs like a cartoon person (bipedal), front paws as arms held slightly away from the body, legs apart with a clear gap, feet flat on the ground, facing forward.';
+    // Animal wording ("hind legs", "front paws") only for animals: on a human it is meaningless (Project 07).
+    const animal = /\b(paws?|fur|furry|tail|snout|muzzle|animal|bunny|rabbit|bear|cat|dog|puppy|mouse|fox|pup)\b/i.test(c.prompt || '');
+    const BIPED_SHAPE = animal
+      ? ' Standing upright on two hind legs like a cartoon person (bipedal), front paws as arms held slightly away from the body, legs apart with a clear gap, feet flat on the ground, facing forward.'
+      : ' Standing upright, arms held slightly away from the body, legs apart with a clear gap, feet flat on the ground, facing forward.';
     const QUAD_SHAPE = ' Standing naturally on all four legs, four straight legs clearly separated with a visible gap under the belly, paws flat on the ground, head and body facing forward, tail clear of the legs.';
     const clean = (t, re) => t.replace(re, '').replace(/\s{2,}/g, ' ').trim();
     const prompt = !rig ? mp.final
