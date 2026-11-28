@@ -38,7 +38,10 @@ try {
   for (const [i, pk] of peeks.entries()) {
     const info = await evalJs(`(()=>{ const E = window.__sceneEngine; E.renderAt(${pk.t}); const k = E.shotIndexAt(${pk.t}); const g = E.groups[k];
       const P = ${JSON.stringify(pk)}; let at = P.at, from = P.from;
-      if (P.actor != null) { const a = g.actors[P.actor]; const p = new a.holder.position.constructor(); a.holder.getWorldPosition(p); const h = a.h0 * a.holder.scale.x;
+      if (P.face != null) { const a = g.actors[P.face]; const hd = a.body?.head; const p = new a.holder.position.constructor(); hd.getWorldPosition(p); const h = a.h0 * a.holder.scale.x;
+        const fq = new a.holder.quaternion.constructor(); a.holder.getWorldQuaternion(fq); const f = new a.holder.position.constructor(0, 0, 1).applyQuaternion(fq); const ang = Math.atan2(f.x, f.z) + (P.ang ?? 0);
+        at = [p.x, p.y + h * (P.dy ?? 0.02), p.z]; const d = P.d ?? h * 0.55; from = [p.x + Math.sin(ang) * d, at[1] + d * (P.el ?? 0.05), p.z + Math.cos(ang) * d]; }
+      else if (P.actor != null) { const a = g.actors[P.actor]; const p = new a.holder.position.constructor(); a.holder.getWorldPosition(p); const h = a.h0 * a.holder.scale.x;
         at = [p.x, p.y + h * 0.35, p.z]; const ang = P.ang ?? 0, el = P.el ?? 0.25, d = P.d ?? h * 2.2; from = [p.x + Math.sin(ang) * d, p.y + h * 0.35 + d * el, p.z + Math.cos(ang) * d]; }
       const c = E.camera; c.fov = P.fov || 40; c.updateProjectionMatrix(); c.position.set(...from); c.lookAt(...at);
       g.group.visible = true; E.renderer.setRenderTarget(null); E.renderer.render(E.scene, c); return { k, at, from }; })()`);

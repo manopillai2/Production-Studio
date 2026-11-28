@@ -51,20 +51,23 @@ function bakeRegion(obj, keep) {
   obj.traverse((o) => {
     if (!o.isMesh || !o.visible) return;
     const g = o.geometry; const pos = g.attributes.position; const uv = g.attributes.uv; const idx = g.index;
-    const n = pos.count; const world = new Float32Array(n * 3);
-    for (let i = 0; i < n; i++) { o.getVertexPosition(i, v); v.applyMatrix4(o.matrixWorld); world[i * 3] = v.x; world[i * 3 + 1] = v.y; world[i * 3 + 2] = v.z; }
+    const n = pos.count; const world = new Float32Array(n * 3); const nrm = g.attributes.normal; const wn = nrm ? new Float32Array(n * 3) : null;
+    const nm = new THREE.Matrix3().getNormalMatrix(o.matrixWorld); const q = new THREE.Vector3();
+    for (let i = 0; i < n; i++) { o.getVertexPosition(i, v); v.applyMatrix4(o.matrixWorld); world[i * 3] = v.x; world[i * 3 + 1] = v.y; world[i * 3 + 2] = v.z;
+      if (wn) { q.fromBufferAttribute(nrm, i).applyMatrix3(nm).normalize(); wn[i * 3] = q.x; wn[i * 3 + 1] = q.y; wn[i * 3 + 2] = q.z; } }
     const mats = [].concat(o.material);
     const groups = g.groups.length ? g.groups : [{ start: 0, count: idx ? idx.count : n, materialIndex: 0 }];
     for (const gr of groups) {
-      const P = [], U = [];
+      const P = [], U = [], N = [];
       for (let t = gr.start; t < gr.start + gr.count; t += 3) {
         const ids = [0, 1, 2].map((k) => (idx ? idx.getX(t + k) : t + k));
         if (!ids.every((i) => keep({ x: world[i * 3], y: world[i * 3 + 1], z: world[i * 3 + 2] }))) continue;
-        for (const i of ids) { P.push(world[i * 3], world[i * 3 + 1], world[i * 3 + 2]); if (uv) U.push(uv.getX(i), uv.getY(i)); }
+        for (const i of ids) { P.push(world[i * 3], world[i * 3 + 1], world[i * 3 + 2]); if (uv) U.push(uv.getX(i), uv.getY(i)); if (wn) N.push(wn[i * 3], wn[i * 3 + 1], wn[i * 3 + 2]); }
       }
       if (!P.length) continue;
       const bg = new THREE.BufferGeometry(); bg.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
       if (uv) bg.setAttribute('uv', new THREE.Float32BufferAttribute(U, 2));
+      if (wn) bg.setAttribute('normal', new THREE.Float32BufferAttribute(N, 3)); else bg.computeVertexNormals();
       bg.computeBoundingSphere(); bg.computeBoundingBox();
       const m = new THREE.Mesh(bg, mats[gr.materialIndex ?? 0] || mats[0]); m.updateMatrixWorld(true);
       out.push(m);
@@ -266,6 +269,25 @@ function findFace(obj, head) {
     return tris.length ? { map, tris } : null;
   })();
 
+  // The mouth layer: a thin skin of the face itself around the mouth (a decal), cut out of the head's triangles and
+  // projected along the face's forward direction. It lies exactly ON the face (no floating sticker, no gaps), and the
+  // mouth is drawn on it as a sharp picture, so the edges stay clean at any size (painting into Meshy's texture, which
+  // is cut into many small scattered pieces, gave torn edges).
+  // Skin colour right around the mouth (a ring just outside the painted mouth; dark and strongly red marks left out):
+  // the cover over the painted smile must match THIS skin, not the forehead's.
+  const mouthSkin = (() => {
+    const out = []; const w = mouth.w;
+    for (let a = 0; a < 24; a++) for (const r of [0.95, 1.15, 1.35]) {
+      const hit = cast(mouth.x + Math.cos((a / 24) * Math.PI * 2) * r * w, mouth.y + 0.12 * w + Math.sin((a / 24) * Math.PI * 2) * r * 0.75 * w);
+      if (hit) out.push(colourAt(hit));
+    }
+    if (out.length < 8) return null;
+    const L0 = median(out.map(lum));
+    const ok = out.filter((c) => lum(c) > L0 * 0.7 && !(c[0] > c[1] * 2.2 && c[0] > c[2] * 2.2));
+    const src = ok.length >= 6 ? ok : out;
+    return [0, 1, 2].map((k) => median(src.map((c) => c[k])));
+  })();
+  const faceMat = (() => { const h = cast(mo.p.x, mo.p.y + 0.6 * mouth.w); const mats = h ? [].concat(h.object.material) : []; return mats[h?.face?.materialIndex ?? 0] || mats[0] || null; })();
   // Express in head-bone space.
   // three.js's attach() converts a world transform into the bone's local one, whatever the bone's scale or
   // rotation (Meshy rigs are often in centimetres with rotated bones). Depth scales with the width.
@@ -283,7 +305,7 @@ function findFace(obj, head) {
   return {
     found, skin, debug: { yaw: +THREE.MathUtils.radToDeg(yaw).toFixed(1), L, h, cell, skinLum, whites: best ? [best.l.white, best.r.white].map((x) => +x.toFixed(2)) : null, marks: marks.length, eyes: [le, re].map((e) => [+(e.x - cx).toFixed(3), +(e.y - H.y).toFixed(3), +e.r.toFixed(3)]), mouth: [+(mouth.x - cx).toFixed(3), +(mouth.y - H.y).toFixed(3), +mouth.w.toFixed(3)] },
     lids: lids.map((s) => toHead(s, eyeR * 2.15, eyeR * 2.2)),
-    mouth: { ...toHead(mo, mouth.w, mouth.w * 0.7), bend }, paint,
+    mouth: { ...toHead(mo, mouth.w, mouth.w * 0.7), bend }, paint, mouthSkin, faceMat: faceMat ? { roughness: faceMat.roughness ?? 0.75, metalness: faceMat.metalness ?? 0 } : null,
   };
 }
 
@@ -294,7 +316,7 @@ const lidGeo = (() => { const g = new THREE.SphereGeometry(0.5, 24, 12, 0, Math.
 // While a character sings, the drawn mouth REPLACES the painted one: a soft skin-coloured patch hides the painted
 // smile, and the singing mouth is drawn at the same size. Units: the painted mouth's width is about 2 (x -1..1),
 // its BOTTOM edge is y = 0 (the face finder anchors on the lowest painted cells), its smile line about y = 0.3.
-const MP = { x0: -1.9, x1: 1.9, y0: -1.4, y1: 1.2, px: 288, nx: 29, ny: 21 };
+const MP = { x0: -1.9, x1: 1.9, y0: -1.4, y1: 1.2, px: 640, nx: 29, ny: 21 };
 const PG = { nx: 15, ny: 11 }; // grid for painting the mouth into the skin texture
 
 /**
@@ -410,9 +432,9 @@ function drawCover(ctx, C) {
   const W = MP.px, H = Math.round(W * (MP.y1 - MP.y0) / (MP.x1 - MP.x0)); ctx.clearRect(0, 0, W, H);
   const X = (x) => ((x - MP.x0) / (MP.x1 - MP.x0)) * W, Y = (y) => ((MP.y1 - y) / (MP.y1 - MP.y0)) * H, S = (d) => (d / (MP.x1 - MP.x0)) * W;
   // 1) hide the painted mouth (its smiling corners reach out and up): skin colour, wide and soft-edged, below the nose
-  const PY = 0.2, RX = 1.9, RY = 1.15;
+  const PY = 0.08, RX = 1.62, RY = 0.92; // wide enough for the painted smile's corners, below the nose, inside the layer's edges
   const g = ctx.createRadialGradient(X(0), Y(PY), 0, X(0), Y(PY), S(RX));
-  g.addColorStop(0, C.skin); g.addColorStop(0.86, C.skin); g.addColorStop(1, C.skin + '00');
+  const cs = globalThis.__mouthCover || C.skin; g.addColorStop(0, cs); g.addColorStop(0.86, cs); g.addColorStop(1, cs + '00');
   ctx.save(); ctx.translate(X(0), Y(PY)); ctx.scale(1, RY / RX); ctx.translate(-X(0), -Y(PY));
   ctx.fillStyle = g; ctx.beginPath(); ctx.arc(X(0), Y(PY), S(RX), 0, Math.PI * 2); ctx.fill(); ctx.restore();
 }
@@ -424,39 +446,147 @@ function drawMouth(ctx, { open, wide, round, teeth }, C, size = 1) {
   const W = MP.px; drawCover(ctx, C);
   const H = Math.round(W * (MP.y1 - MP.y0) / (MP.x1 - MP.x0));
   const X = (x) => ((x - MP.x0) / (MP.x1 - MP.x0)) * W, Y = (y) => ((MP.y1 - y) / (MP.y1 - MP.y0)) * H, S = (d) => (d / (MP.x1 - MP.x0)) * W;
-  // 2) a cute cartoon singing mouth, about as wide as the painted smile: a gently smiling top edge, a round bottom,
-  //    soft corners, a dark inside with a pink tongue and a soft band of upper teeth. No hard outline.
-  const o = Math.max(0, Math.min(1, open)); const UP = -0.06; // just below the carved groove of the painted smile (its walls can't take a clean drawing)
-  const rx = 0.46 * size * wide * (1 - 0.18 * round);                // half width (about the painted smile)
-  const cy = UP + 0.02 * (1 - round);                                // corners: level with the top, only a hint of a smile
-  const top = UP + 0.01;                                             // upper lip: nearly flat
-  const depth = 0.16 + 1.15 * o * size;                               // jaw drop: a deep, round opening
-  const bot = cy - depth;
-  const k = 0.25 + 0.2 * round;                                      // corner roundness
+  // 2) Her own smile, opening: the top edge lies on the painted smile line with the corners gently raised (a smile),
+  //    the bottom is round like a "D", the corners are rounded (never pointed), inside dark with a pink tongue and a
+  //    soft band of upper teeth. Closed ("m", "b", "p") it is the smile line itself.
+  const o = Math.max(0, Math.min(1, open));
+  const LINE = 0.3;                                                  // the painted smile line (mouth units; the painted mouth's bottom is 0)
+  const rx = 0.5 * size * wide * (1 - 0.22 * round);                 // half width ≈ the painted smile
+  const lift = 0.1 * (1 - round);                                    // how much the corners rise (a smile); pursed lips: level
+  const cy = LINE + lift;                                            // corners
+  const top = LINE - 0.02;                                           // middle of the upper lip
+  const depth = 0.12 + 1.0 * o * size;                               // jaw drop
+  const bot = LINE - depth;
   const path = () => {
     ctx.beginPath();
     ctx.moveTo(X(-rx), Y(cy));
-    ctx.bezierCurveTo(X(-rx * 0.45), Y(top + 0.03), X(rx * 0.45), Y(top + 0.03), X(rx), Y(cy));                     // top: nearly flat
-    ctx.bezierCurveTo(X(rx * 1.04), Y(cy - depth * 0.62), X(rx * 0.58), Y(bot), X(0), Y(bot));                      // bottom right: round, like a D
-    ctx.bezierCurveTo(X(-rx * 0.58), Y(bot), X(-rx * 1.04), Y(cy - depth * 0.62), X(-rx), Y(cy));                  // bottom left
+    ctx.bezierCurveTo(X(-rx * 0.55), Y(top), X(rx * 0.55), Y(top), X(rx), Y(cy));                                  // top: the smile line
+    ctx.bezierCurveTo(X(rx * 1.02), Y(cy - depth * 0.7), X(rx * 0.6), Y(bot), X(0), Y(bot));                         // bottom right: round
+    ctx.bezierCurveTo(X(-rx * 0.6), Y(bot), X(-rx * 1.02), Y(cy - depth * 0.7), X(-rx), Y(cy));                      // bottom left
     ctx.closePath();
   };
-  if (o < 0.05) { // lips together: a small smile line, like the painted one
-    ctx.beginPath(); ctx.moveTo(X(-rx * 0.9), Y(cy + 0.02)); ctx.quadraticCurveTo(X(0), Y(top - 0.1), X(rx * 0.9), Y(cy + 0.02));
-    ctx.lineCap = 'round'; ctx.strokeStyle = C.inside; ctx.lineWidth = S(0.07); ctx.stroke();
+  ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  if (o < 0.05) { // lips together: the smile line
+    ctx.beginPath(); ctx.moveTo(X(-rx), Y(cy)); ctx.bezierCurveTo(X(-rx * 0.55), Y(top - 0.06), X(rx * 0.55), Y(top - 0.06), X(rx), Y(cy));
+    ctx.strokeStyle = C.inside; ctx.lineWidth = S(0.07); ctx.stroke();
     return;
   }
-  ctx.save(); path(); ctx.fillStyle = C.inside; ctx.fill(); ctx.clip();
+  ctx.save(); path(); ctx.fillStyle = C.inside; ctx.fill();
+  ctx.strokeStyle = C.inside; ctx.lineWidth = S(0.06); ctx.stroke(); // the same colour around the edge: rounded corners
+  path(); ctx.clip();
   // tongue: a soft pink mound at the bottom
-  ctx.fillStyle = C.tongue; ctx.beginPath(); ctx.ellipse(X(0), Y(bot - 0.02), S(rx * 0.68), S(0.12 + 0.45 * depth), 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = C.tongue; ctx.beginPath(); ctx.ellipse(X(0), Y(bot + 0.01), S(rx * 0.55), S(0.06 + 0.22 * depth), 0, 0, Math.PI * 2); ctx.fill(); // small, at the bottom: the dark inside stays readable
   // upper teeth: a soft white band just under the upper lip (only when the mouth is open enough)
   if (teeth > 0.05 && o > 0.15) {
-    ctx.beginPath(); ctx.moveTo(X(-rx), Y(cy)); ctx.bezierCurveTo(X(-rx * 0.45), Y(top + 0.03), X(rx * 0.45), Y(top + 0.03), X(rx), Y(cy));
-    ctx.strokeStyle = '#FFFDF8'; ctx.lineCap = 'butt'; ctx.lineWidth = S(2 * Math.min(0.13, 0.04 + 0.09 * teeth * o)); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(X(-rx * 0.85), Y(cy - 0.02)); ctx.bezierCurveTo(X(-rx * 0.5), Y(top - 0.02), X(rx * 0.5), Y(top - 0.02), X(rx * 0.85), Y(cy - 0.02));
+    ctx.strokeStyle = '#FFFDF8'; ctx.lineCap = 'round'; ctx.lineWidth = S(2 * Math.min(0.11, 0.035 + 0.08 * teeth * o)); ctx.stroke();
   }
   ctx.restore();
-  // a very soft lip edge (blends into the skin)
-  path(); ctx.strokeStyle = C.lip; ctx.globalAlpha = 0.3; ctx.lineJoin = 'round'; ctx.lineWidth = S(0.025); ctx.stroke(); ctx.globalAlpha = 1; // the faintest lip edge
+}
+
+/**
+ * The mouth layer: a COPY of the character's own face triangles around the mouth, with the same material, the same
+ * uvs and the same bone weights, so it is pixel-identical to the face where nothing is drawn and moves exactly with
+ * the skin. The mouth picture (canvas) is blended into its colour (and glow, for Meshy's emissive skin) through a
+ * second set of uvs laid flat across the mouth. Sharp at any size; no seams, no floating, no tearing.
+ */
+function mouthLayer(obj, head, m, canvasTex) {
+  obj.updateMatrixWorld(true); head.updateMatrixWorld(true);
+  const toMouth = new THREE.Matrix4().multiplyMatrices(head.matrixWorld, new THREE.Matrix4().compose(m.pos, m.quat, m.scale)).invert();
+  const all = []; obj.traverse((o) => { if (o.isSkinnedMesh && o.visible && !o.userData.mouthLayer) all.push(o); });
+  const layers = all.map((best) => layerFor(best)).filter(Boolean);
+  if (!layers.length) return null;
+  // one handle for all pieces (the model can be split into several meshes around the mouth)
+  return { get visible() { return layers[0].visible; }, set visible(x) { for (const l of layers) l.visible = x; }, layers };
+
+  function layerFor(best) {
+  const g = best.geometry; const pos = g.attributes.position, idx = g.index; const n = pos.count; const v = new THREE.Vector3();
+  const mu = new Float32Array(n * 2); const inside = new Uint8Array(n); const M = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    best.getVertexPosition(i, v); v.applyMatrix4(best.matrixWorld).applyMatrix4(toMouth); // mouth units: x × width, y × 0.7·width, z × width
+    M[i * 3] = v.x; M[i * 3 + 1] = v.y; M[i * 3 + 2] = v.z;
+    mu[i * 2] = (v.x - MP.x0) / (MP.x1 - MP.x0); mu[i * 2 + 1] = (v.y - MP.y0) / (MP.y1 - MP.y0);
+    inside[i] = v.x > MP.x0 && v.x < MP.x1 && v.y > MP.y0 && v.y < MP.y1 && v.z > -3 && v.z < 1.5 ? 1 : 0; // deep enough for the carved smile's groove walls
+  }
+  const tri = []; const count = idx ? idx.count : n;
+  for (let k = 0; k < count; k += 3) { const a = idx ? idx.getX(k) : k, b = idx ? idx.getX(k + 1) : k + 1, c = idx ? idx.getX(k + 2) : k + 2; if (inside[a] && inside[b] && inside[c]) tri.push(a, b, c); } // whole triangles only: one reaching far outside would smear the picture across it
+  if (!tri.length) return null;
+  const sub = new THREE.BufferGeometry(); sub.setIndex(tri); // the triangles first: normals are computed from them
+  for (const [name, attr] of Object.entries(g.attributes)) sub.setAttribute(name, attr); // shared vertex data, only some triangles
+  // Smooth the carved smile out of the copy (membrane fill, below). The groove's walls caught the drawing at odd
+  // angles (dark lines, red corner ticks); flattened, they disappear. The real model keeps its groove (the painted
+  // smile shows when she isn't singing).
+  try {
+    const E = (x, y) => Math.hypot(x / 1.62, (y - 0.08) / 0.92); // the cover's ellipse (see drawCover)
+    const used = new Set(tri);
+    // Membrane fill: the skin around the mouth stays where it is; every point inside settles to the average depth of its
+    // neighbours (like a rubber sheet stretched over the groove). It follows the face's real curve, and the groove's
+    // walls collapse flat.
+    // Meshy splits vertices along texture seams: join points at the same place, so the sheet is one piece.
+    const keyOf = (i) => `${Math.round(M[i * 3] * 2000)},${Math.round(M[i * 3 + 1] * 2000)},${Math.round(M[i * 3 + 2] * 2000)}`;
+    const K = new Map(); for (const i of used) K.set(i, keyOf(i));
+    const nb = new Map(); const link = (a, b) => { if (a === b) return; if (!nb.has(a)) nb.set(a, new Set()); nb.get(a).add(b); };
+    for (let k = 0; k < tri.length; k += 3) { const [a, b, c] = [K.get(tri[k]), K.get(tri[k + 1]), K.get(tri[k + 2])]; link(a, b); link(b, a); link(b, c); link(c, b); link(a, c); link(c, a); }
+    const zStart = new Map(); for (const i of used) zStart.set(K.get(i), M[i * 3 + 2]);
+    const innerKeys = [...zStart.keys()].filter((k) => { const [x, y] = k.split(',').map((v) => v / 2000); return E(x, y) < 0.95 && y < 0.7; }); // the mouth area, below the nose
+    const Z = new Map(innerKeys.map((k) => [k, zStart.get(k)]));
+    const zOf = (k) => (Z.has(k) ? Z.get(k) : zStart.get(k));
+    for (let it = 0; it < 150; it++) for (const k of innerKeys) { const ns = nb.get(k); if (!ns?.size) continue; let s2 = 0; for (const j of ns) s2 += zOf(j); Z.set(k, s2 / ns.size); }
+    const inner = [...used].filter((i) => Z.has(K.get(i)));
+    {
+      const P = new Float32Array(g.attributes.position.array);
+      const toLocal = new THREE.Matrix4().multiplyMatrices(toMouth, best.matrixWorld).invert(); // mouth units → mesh space (posed)
+      const moved = new Set(); const q = new THREE.Vector3(), t0 = new THREE.Vector3(), c = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()]; const Lm = new THREE.Matrix3();
+      for (const i of inner) {
+        const x = M[i * 3], y = M[i * 3 + 1], z = M[i * 3 + 2]; const zs = Z.get(K.get(i)); if (Math.abs(zs - z) < 1e-4) continue; // flatten the groove AND its rims (the layer is drawn slightly in front: mouthPush)
+        q.set(x, y, zs).applyMatrix4(toLocal); // the wanted POSED position, in mesh space
+        // The position attribute is in the BIND pose; skinning maps it affinely for this vertex: posed = L·bind + t.
+        // Measure L and t with the vertex's own bone weights, then solve for the bind position.
+        best.applyBoneTransform(i, t0.set(0, 0, 0));
+        for (let a = 0; a < 3; a++) { best.applyBoneTransform(i, c[a].set(a === 0 ? 1 : 0, a === 1 ? 1 : 0, a === 2 ? 1 : 0)); c[a].sub(t0); }
+        Lm.set(c[0].x, c[1].x, c[2].x, c[0].y, c[1].y, c[2].y, c[0].z, c[1].z, c[2].z);
+        if (Math.abs(Lm.determinant()) < 1e-12) continue;
+        q.sub(t0).applyMatrix3(Lm.invert());
+        P[i * 3] = q.x; P[i * 3 + 1] = q.y; P[i * 3 + 2] = q.z; moved.add(i);
+      }
+      sub.userData.smooth = { used: used.size, inner: inner.length, moved: moved.size };
+      if (moved.size) {
+        sub.setAttribute('position', new THREE.BufferAttribute(P, 3));
+        const N0 = g.attributes.normal; if (N0) sub.setAttribute('normal', N0.clone()); // its OWN copy: computing normals must not touch the face's
+        sub.computeVertexNormals(); const N = sub.attributes.normal;
+        if (N0) for (let i = 0; i < n; i++) if (!moved.has(i)) N.setXYZ(i, N0.getX(i), N0.getY(i), N0.getZ(i)); // keep the face's own shading at the edges
+      }
+    }
+  } catch (e) { console.warn('Face: smoothing the mouth layer failed:', e.message); }
+  sub.setAttribute('mouthUv', new THREE.BufferAttribute(mu, 2));
+  if (g.morphAttributes) sub.morphAttributes = g.morphAttributes;
+  const groupsMat = Array.isArray(best.material) ? best.material[0] : best.material;
+  const mat = groupsMat.clone();
+  mat.polygonOffset = true; mat.polygonOffsetFactor = -1; mat.polygonOffsetUnits = -4;
+  // Drawn a little in front of the real face, moved along the line of sight only (so it stays in exactly the same
+  // place on screen): the real lip rims and groove can never poke through the smooth layer.
+  const sc = new THREE.Vector3(); head.matrixWorld.decompose(new THREE.Vector3(), new THREE.Quaternion(), sc);
+  const ms = new THREE.Vector3(); best.matrixWorld.decompose(new THREE.Vector3(), new THREE.Quaternion(), ms);
+  const pushLocal = (0.45 * m.scale.x * sc.x) / (ms.x || 1);
+  mat.onBeforeCompile = (sh) => {
+    sh.uniforms.mouthMap = { value: canvasTex }; sh.uniforms.mouthPush = { value: pushLocal };
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nuniform float mouthPush;\nattribute vec2 mouthUv;\nvarying vec2 vMouthUv;')
+      .replace('#include <uv_vertex>', '#include <uv_vertex>\nvMouthUv = mouthUv;')
+      .replace('#include <project_vertex>', '#include <project_vertex>\nmvPosition.xyz -= normalize(mvPosition.xyz) * mouthPush * length(modelViewMatrix[0].xyz);\ngl_Position = projectionMatrix * mvPosition;');
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', '#include <common>\nuniform sampler2D mouthMap;\nvarying vec2 vMouthUv;\nvec4 mouthC;')
+      .replace('#include <map_fragment>', '#include <map_fragment>\nmouthC = texture2D(mouthMap, vMouthUv);\ndiffuseColor.rgb = mix(diffuseColor.rgb, mouthC.rgb, mouthC.a);')
+      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n#ifdef USE_EMISSIVEMAP\ntotalEmissiveRadiance = mix(totalEmissiveRadiance, emissive * mouthC.rgb, mouthC.a);\n#endif');
+  };
+  mat.customProgramCacheKey = () => 'mouthLayer';
+  const layer = new THREE.SkinnedMesh(sub, mat);
+  layer.bind(best.skeleton, best.bindMatrix);
+  layer.position.copy(best.position); layer.quaternion.copy(best.quaternion); layer.scale.copy(best.scale);
+  layer.castShadow = false; layer.receiveShadow = true; layer.frustumCulled = false; layer.userData.noClearance = true; layer.userData.mouthLayer = true; layer.renderOrder = 1;
+  best.parent.add(layer);
+  return layer;
+  }
 }
 
 /**
@@ -486,17 +616,25 @@ export function addFace(obj, head, key, seed = 1, { quad = false } = {}) {
   const mouthIn = new THREE.Group(); mouthIn.scale.copy(m.scale); mouthG.add(mouthIn);
   const canvas = document.createElement('canvas'); canvas.width = MP.px; canvas.height = Math.round(MP.px * (MP.y1 - MP.y0) / (MP.x1 - MP.x0)); const mctx = canvas.getContext('2d', { willReadFrequently: true });
   const tex = new THREE.CanvasTexture(canvas); tex.colorSpace = THREE.SRGBColorSpace;
+  // No mipmaps: on surfaces seen edge-on (the smile groove's walls) the GPU would sample a blurred, shrunken copy that
+  // mixes in the transparent border, and the skin underneath shows through as a smeared wedge.
+  tex.generateMipmaps = false; tex.minFilter = THREE.LinearFilter; tex.magFilter = THREE.LinearFilter; tex.anisotropy = 4;
   const mouthMesh = new THREE.Mesh(mouthPlane(m.bend), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 }));
   mouthIn.add(mouthMesh); head.add(mouthG); mouthG.visible = false;
-  let painter = null; try { painter = texturePainter(L.paint, canvas, () => drawCover(mctx, colors)); } catch (e) { console.warn('Face: mouth painting off:', e.message); painter = null; }
-  const skinC = new THREE.Color().setRGB(...L.skin);
+  // Preferred: the mouth layer that lies on the face (decal), lit like the skin. Fallbacks: painting into the texture,
+  // then a bent plane.
+  let decalMesh = null;
+  try { decalMesh = mouthLayer(obj, head, m, tex); if (decalMesh) decalMesh.visible = false; } catch (e) { console.warn('Face: mouth layer failed:', e.message); decalMesh = null; }
+  let painter = null; if (!decalMesh) { try { painter = texturePainter(L.paint, canvas, () => drawCover(mctx, colors)); } catch (e) { console.warn('Face: mouth painting off:', e.message); painter = null; } }
+  const skinC = new THREE.Color().setRGB(...(L.mouthSkin || L.skin)); // linear → shown as sRGB hex for the canvas
   const colors = { skin: '#' + skinC.getHexString(), inside: '#5A1626', tongue: '#F27C8C', lip: '#' + skinC.clone().lerp(new THREE.Color('#E0384F'), 0.8).getHexString() };
   let last = '';
   // Blink schedule: every 2.4–5 s, a little different per character; sometimes a double blink.
   const rnd = (k) => { const x = Math.sin(seed * 12.9898 + k * 78.233) * 43758.5453; return x - Math.floor(x); };
   const blinks = []; for (let t = 0.6 + rnd(0) * 2, k = 1; t < 600; k++) { blinks.push(t); if (rnd(k * 3) < 0.15) blinks.push(t + 0.32); t += 2.4 + rnd(k) * 2.6; }
   return {
-    found: L.found, debug: { ...L.debug, paint: painter ? painter.region : false },
+    found: L.found, debug: { ...L.debug, mouth_layer: !!decalMesh, paint: painter ? painter.region : false },
+    canvas,
     /** t = song time (s); open = mouth shape {open, wide, round, teeth} or a number 0..1; forceClose (tests) sets the eyelids directly. */
     pose(t, open, forceClose = null, renderer = null) {
       let close = 0; const B = 0.2; // blink length (s)
@@ -506,7 +644,10 @@ export function addFace(obj, head, key, seed = 1, { quad = false } = {}) {
       const sh = typeof open === 'number' ? { open: clamp01(open), wide: 0.85 + 0.15 * clamp01(open), round: 0, teeth: 0.5 } : open;
       const singing = typeof open === 'number' ? sh.open > 0.04 : true; // an object = singing: the drawn mouth replaces the painted one
       const key = [sh.open, sh.wide, sh.round, sh.teeth].map((x) => x.toFixed(2)).join();
-      if (painter && renderer) {
+      if (decalMesh) {
+        mouthG.visible = false; decalMesh.visible = singing;
+        if (singing && key !== last) { drawMouth(mctx, sh, colors); tex.needsUpdate = true; last = key; }
+      } else if (painter && renderer) {
         mouthG.visible = false;
         if (singing) { if (key !== last || !painter.painted) { painter.prepare(); drawMouth(mctx, sh, colors); painter.draw(renderer); last = key; } }
         else painter.clear(renderer);

@@ -322,6 +322,27 @@ Implementation lessons:
   - Meshy has no face, eye or jaw bones and no blend shapes, so expressions must be painted by the studio (FaceRig).
   - Four-legged rigs can't have fingers.
 
+### Singing mouth, round 6 (27 Nov 2026): a mouth layer instead of painting into the texture
+- **Why the painted singing mouth looked bad:** it was painted into the skin texture triangle by triangle. Meshy cuts that texture into many small, scattered pieces around the mouth (about 600 triangles), so the edges came out ragged and torn, and the low texture resolution made them jagged. It also sat on the chin, below the carved smile groove, and looked nothing like her own smile.
+- **The mouth layer (`FaceRig.mouthLayer`):**
+  - a COPY of the character's own face triangles around the mouth;
+  - the same material, uvs and bone weights (a SkinnedMesh bound to the same skeleton), so where nothing is drawn it is pixel-identical to the face, and it moves exactly with the skin;
+  - a second set of uvs laid flat across the mouth carries a sharp canvas picture (cover + mouth), blended into the material's colour and glow in the shader.
+- **What didn't work (and why):**
+  - a DecalGeometry sticker on its own material: Meshy skin is a MeshPhysicalMaterial driven by metalness, roughness and emissive maps, so a plain material rendered as dark metal ("brown moustache");
+  - attaching it rigidly to the head bone: the chin skin bends with the neck, so the edges tore.
+- **Traps on the way:**
+  - The carved smile groove is deeper than expected: include deep triangles.
+  - Copy only triangles that lie WHOLLY inside the mouth area. One that reaches outside smears the picture across it and lets the skin texture show through (a red wedge at the corners).
+  - The geometry's `position` is in the BIND pose. To move a vertex to a measured (posed) place, invert that vertex's own skinning with `applyBoneTransform`.
+  - `computeVertexNormals()` reuses a shared normal attribute: clone it first, or the whole face goes black.
+- **How to debug a face:**
+  - paint the cover bright green (`globalThis.__mouthCover = '#00ff00'`);
+  - hide the real face (colorWrite off) or turn the layer's skin texture blue, to tell "layer" from "model";
+  - render close-ups with `peek.mjs` using `{face: 0}`.
+- **The cover's skin colour** is sampled from a ring around the mouth (the forehead's colour was wrong). The cover stays below the nose and fades out before the layer's edge.
+- **Mouth design:** her own smile opening. The top edge sits on the painted smile line with the corners slightly raised, the corners are rounded, the bottom is round, and there's a tongue and a soft band of teeth. Closed, it is the smile line itself.
+
 ## 14. Known limitations and ideas for later
 
 - Faces: no expressions on cue (blinks and singing mouths only). Lip-sync is spelling-based (no phoneme dictionary). Faint traces of the carved smile can show at the mouth corners. Four-legged characters (Mango) keep their painted mouth (his rig has a jaw bone that could be used).
