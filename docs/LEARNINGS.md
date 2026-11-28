@@ -418,6 +418,15 @@ General lessons from this round:
 - **The song can be measured for its beat**, not only its words: `docs/project-07/music/beats.py` (onset envelope + autocorrelation) gave 89.1 bpm. Time bobs, claps and steps to `beats.json`.
 - **Keep character card prompts at about 450 characters** when the character will be rigged. The stance and background sentences take about 310 of the 800.
 
+### Project 06 round 6 (28 Nov 2026): "polite, soft, slow" for toddlers
+| What the user saw | Cause | Lesson / fix | Status |
+|---|---|---|---|
+| "While spinning, the shots collapse… multiple shots moving at the same time" | Dissolves between short (~2.3 s) chorus shots showed two MOVING shots at once for 0.8 s, and the camera orbited while the merry-go-round spun, so everything on screen moved. | **For toddlers, change only one thing at a time:** clean cuts (a dissolve only for slow, calm moments; an iris for a change of place); when the subject spins, the camera stays still. The merry-go-round is slower (0.22 turns/s). | Built; check pending |
+| Mira's hands, feet and head movements "very fast", hard to follow | Gestures squeezed several cycles into the word time (3 head shakes in ~0.6 s, 2–4 random waves); swing legs kicked and tucked hard; energy varied up to +14%. | **Calm tempo:** each wave, shake, nod and clap takes at least ~0.6–0.9 s, so a short action does FEWER movements; smaller amplitudes (shake 20°, wave forearm 17°); energy never above the designed move; swing hands steady on the chains with gentle legs; slower swings (3.2 s, slow chorus 3.8 s). **A gesture children are meant to copy must be slow enough to copy.** | Built; check pending |
+| Ball "not colourful" | The Meshy ball's texture read orange-brown in sunset light. | A studio-built glossy rainbow beach ball in the playground palette (`procedural: 'beachball'`). **Key props children watch should use the world's brightest palette colours.** | Built; check pending |
+| Swing legs still wrong in a later swing shot | The slow-chorus swing had its own, slower settings that the earlier fix didn't cover. | **After a fix, re-check EVERY shot of that kind, not just the ones in the screenshots.** | In progress |
+| (From the Project 07 session) the mouth cover picked up T-shirt colour | The skin-sampling ring around the mouth reached the clothes on a small character. | Sample only beside and above the mouth, near the face's own skin colour (fixed in FaceRig by the Project 07 session). | Re-check Mira's close-ups |
+
 ## 14. Known limitations and ideas for later
 
 - Faces: no expressions on cue (blinks and singing mouths only). Lip-sync is spelling-based (no phoneme dictionary). Faint traces of the carved smile can show at the mouth corners. Four-legged characters (Mango) keep their painted mouth (his rig has a jaw bone that could be used).
