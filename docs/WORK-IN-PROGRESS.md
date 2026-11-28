@@ -1,6 +1,6 @@
 # Work in progress — read this first after any interruption
 
-Last updated: 2026-11-28, round 6 started (Claude, Project 06)
+Last updated: 2026-11-28, round 6 video delivered (Claude, Project 06)
 
 ## Current task
 **Project 06 (episode id 17) — round 5 fixes from the user's screenshots** (`screenshots/`), then a final 1080p render and a review of the finished video.
@@ -27,24 +27,8 @@ The user asked to fix everything in the screenshots, match every shot's action t
 - **Engine:** every action setting reaches the moves (height, nods, tugs…); rides keep their exact timing.
 - **New projects:** the kids-first rules are in Claude's director prompt; the move catalog has the Project 06 moves; finger bones for new two-legged characters.
 
-## In progress (resume here): Project 06 ROUND 6 (user feedback, 28 Nov 2026)
-User feedback on the round 5 video:
-- (a) "spin around" shots: too much moving at once (the camera orbits while the merry-go-round spins). Hold the camera still and spin more gently.
-- (b) Mira's movements are too fast (swing hands and legs, head shake, wave). Make her polite, soft and slow so toddlers can follow and copy.
-- (c) Make the ball colourful, matching the props and landscape.
-- (d) Swing legs are still wrong in a later swing shot (the slow-chorus swing, around 2:14–2:23). Fix them in EVERY swing shot.
-
-FOUND (round 6): an action's `seconds` = TOTAL of all repeats; fixed. Checked: spin shots (still camera), ball (colourful, moved clear of Mango), mouth, ride clearance (only 2-5 cm resting contacts).
-NOW: final export of round 6 running (detached, scratchpad/exp6). Then review the MP4, update the log/learnings, tell the Project 07 session "export done".
-
-Steps:
-1. Edit (no build yet; coordinate with Project 07 first):
-   - MoveMaker: wave, shake and nod slower and softer; swingRide with hands steady on the chains and a gentle leg swing;
-   - direction: no orbit on spin shots, slower merry-go-round;
-   - the ball: a procedural rainbow beach ball (actor `procedural: 'beachball'`).
-2. Message `production-studio-6a` for a build/export window, then `npx vite build` and `node docs/project-06/direction.mjs`.
-3. Check: swing legs in all swing shots (clearance + close looks), gesture speed (frame runs), spin shots, the ball.
-4. Export detached (coordinate with Project 07), review, update the log, LEARNINGS and this file, commit.
+## In progress (resume here)
+Nothing running. The Project 06 ROUND 6 video is DONE (`storage/media/exports/episode-17/2026-11-28T05-51-21-1080p/`), status **Awaiting User Review**. Wait for the user's feedback. Pushing is blocked by the safety check, so the user runs `! git push`.
 
 Another Claude session (`production-studio-6a`, Project 07 "My Little Home") works in this repo too. Coordinate server restarts and `client/dist` builds with it via SendMessage.
 

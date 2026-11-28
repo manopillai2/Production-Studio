@@ -195,3 +195,21 @@ Summary of what changed:
 - 1920×1080, 30 fps, 212.37 s, −15.7 LUFS. Rendered as a detached process (it survives Claude Code reaping); took about 17 min.
 - A contact sheet every 3 s of the MP4 was checked. Status: **Awaiting User Review**.
 - Another Claude session (Project 07) shares the repo and server; the export was coordinated with it.
+
+---
+
+# Round 6 — "polite, soft, slow" (28 Nov 2026)
+Feedback and causes are in `docs/LEARNINGS.md` ("Project 06 round 6"). **Root cause of the fast swinging and of Mira standing up in the slow-chorus swing:** an action's `seconds` is the TOTAL of all repeats, and the direction passed one cycle.
+Changes:
+- ride, skip and climb timing fixed (`period × repeats`);
+- calm gesture tempo (fewer, slower waves, shakes, nods and claps; smaller amplitudes);
+- swing hands steady on the chains, gentle legs, slower swings; calmer seesaw; slower merry-go-round;
+- no orbit on spin shots; clean cuts instead of dissolves;
+- a studio-built rainbow beach ball, placed clear of Mango;
+- `direction-v4.mjs` keeps the round 5 direction.
+
+## Round 6 preview — DONE (28 Nov 2026)
+- `storage/media/exports/episode-17/2026-11-28T05-51-21-1080p/mira-and-mango-playground-party-1080p.mp4` (87.2 MB, gitignored).
+- 1920×1080, 30 fps, 212.37 s, −15.7 LUFS. Rendered detached; coordinated with the Project 07 session.
+- Checked from the MP4: every shot at 3 s spacing; the slow-chorus swing (she stays seated); the yes/no/hello wave run (one gentle movement each). Mouth checked in the preview.
+- Status: **Awaiting User Review**.
