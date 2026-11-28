@@ -315,6 +315,7 @@ Implementation lessons:
   - Equipment proportions matter as much: a seat wider than a child's hips can't be straddled, so the seesaw seat is narrow and the dog's seat is wide. A tower must be taller and wider than the character and her hair.
   - A slide must end low, and the child must step off.
 - **The same trap twice:** `rig.map` bones belong to a hidden analysis copy of the skeleton. Anything that moves a character's bones after posing must use `body.obj.getObjectByName(name)` (see `liveMap`).
+- **Long renders on this laptop (7.6 GB):** run `export.mjs` as its own Windows process (`Start-Process node …` with its output going to a log file) and watch progress from the server's frame folder. As a background task of Claude Code, it gets stopped when memory runs low. Close Edge, Teams and Phone Link first.
 - **The server and the built client don't hot-reload.** Port 5175 serves `client/dist`, so rebuild with `npx vite build`. Server changes, such as a new allowed look value, need a server restart. Until then, the old code silently drops the new value.
 
 - **Meshy rigging options (checked against the API docs, 27 Nov 2026).**

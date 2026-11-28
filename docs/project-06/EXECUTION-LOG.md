@@ -155,3 +155,10 @@ Checked with close-ups of all 6 singing close-ups (day, candy garden, sunset) fr
 - Meshy credits: **0**.
 
 **Found in the round 4 render, then fixed:** a broken blink (an orange patch with a black bar over part of the eye) in the "Wave hello" close-up. The eyelids now use the same skin-copy layer as the mouth. Checked at lid positions 0, 0.3, 0.5, 0.6, 0.85 and 1 in day and sunset light. The eyebrows stay visible.
+
+## Round 4 preview — VERIFIED (28 Nov 2026)
+- File: `storage/media/exports/episode-17/2026-11-28T02-33-51-1080p/mira-and-mango-playground-party-1080p.mp4` (91.9 MB; gitignored like the other Project 06 previews).
+- H.264 1920×1080, 30 fps, 212.37 s · AAC · −15.7 LUFS (identical to the song).
+- Checked from the MP4 itself: the singing close-ups at 0:27 and 1:17 (10 fps runs), where the mouth is clean with matched skin and no marks; and the blink at 1:48 (30 fps), where the lids match the skin, the closed eyes show a soft lash line and the eyebrows stay visible.
+- Rendering: the first try was stopped at about 30% when Claude Code ran low on memory. The render now runs as its own Windows process (`Start-Process node export.mjs …`) with Edge, Teams and Phone Link closed, so Claude Code can't stop it.
+- Status: **Awaiting User Review**.
