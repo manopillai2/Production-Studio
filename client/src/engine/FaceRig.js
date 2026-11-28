@@ -287,6 +287,14 @@ function findFace(obj, head) {
     const src = ok.length >= 6 ? ok : out;
     return [0, 1, 2].map((k) => median(src.map((c) => c[k])));
   })();
+  // Skin colour around the eyes (for the blinking lids): a ring around each eye, dark marks (brows, lashes, hair) left out.
+  const eyeSkin = (() => {
+    const out = [];
+    for (const e of [le, re]) for (let a = 0; a < 24; a++) for (const r of [1.35, 1.6]) { const hit = cast(e.x + Math.cos((a / 24) * Math.PI * 2) * r * eyeR, e.y + Math.sin((a / 24) * Math.PI * 2) * r * eyeR); if (hit) out.push(colourAt(hit)); }
+    if (out.length < 8) return null;
+    const L0 = median(out.map(lum)); const ok = out.filter((c) => lum(c) > L0 * 0.8 && !(c[0] > c[1] * 2.2 && c[0] > c[2] * 2.2));
+    const src = ok.length >= 6 ? ok : out; return [0, 1, 2].map((k) => median(src.map((c) => c[k])));
+  })();
   const faceMat = (() => { const h = cast(mo.p.x, mo.p.y + 0.6 * mouth.w); const mats = h ? [].concat(h.object.material) : []; return mats[h?.face?.materialIndex ?? 0] || mats[0] || null; })();
   // Express in head-bone space.
   // three.js's attach() converts a world transform into the bone's local one, whatever the bone's scale or
@@ -305,7 +313,7 @@ function findFace(obj, head) {
   return {
     found, skin, debug: { yaw: +THREE.MathUtils.radToDeg(yaw).toFixed(1), L, h, cell, skinLum, whites: best ? [best.l.white, best.r.white].map((x) => +x.toFixed(2)) : null, marks: marks.length, eyes: [le, re].map((e) => [+(e.x - cx).toFixed(3), +(e.y - H.y).toFixed(3), +e.r.toFixed(3)]), mouth: [+(mouth.x - cx).toFixed(3), +(mouth.y - H.y).toFixed(3), +mouth.w.toFixed(3)] },
     lids: lids.map((s) => toHead(s, eyeR * 2.15, eyeR * 2.2)),
-    mouth: { ...toHead(mo, mouth.w, mouth.w * 0.7), bend }, paint, mouthSkin, faceMat: faceMat ? { roughness: faceMat.roughness ?? 0.75, metalness: faceMat.metalness ?? 0 } : null,
+    mouth: { ...toHead(mo, mouth.w, mouth.w * 0.7), bend }, paint, mouthSkin, eyeSkin, faceMat: faceMat ? { roughness: faceMat.roughness ?? 0.75, metalness: faceMat.metalness ?? 0 } : null,
   };
 }
 
@@ -484,13 +492,34 @@ function drawMouth(ctx, { open, wide, round, teeth }, C, size = 1) {
   ctx.restore();
 }
 
+/** The eyelid on its layer (lid frame: x across the eye, y = 0 at the top of the eye, -1 at the bottom). */
+const EB = { x0: -0.85, x1: 0.85, y0: -1.35, y1: 0.35 }; const EPX = 256;
+function drawLid(ctx, close, C) {
+  const W = EPX; ctx.clearRect(0, 0, W, W); if (close < 0.02) return;
+  const X = (x) => ((x - EB.x0) / (EB.x1 - EB.x0)) * W, Y = (y) => ((EB.y1 - y) / (EB.y1 - EB.y0)) * W, S = (d) => (d / (EB.x1 - EB.x0)) * W;
+  const cx = 0, cy = -0.5, R = 0.66; // the eye, a little generously
+  const edge = 0.05 - close * 1.2;   // the lid's lower edge travels down as the eye closes
+  const sag = 0.16;                  // the edge curves down in the middle (a round lid)
+  ctx.save();
+  const TOP = 0.05; // the lid starts at the top of the eye: the eyebrows above always stay visible
+  ctx.beginPath(); ctx.moveTo(X(-1), Y(TOP)); ctx.lineTo(X(1), Y(TOP)); ctx.lineTo(X(1), Y(edge)); ctx.quadraticCurveTo(X(0), Y(edge - 2 * sag), X(-1), Y(edge)); ctx.closePath(); ctx.clip();
+  const g = ctx.createRadialGradient(X(cx), Y(cy), 0, X(cx), Y(cy), S(R));
+  g.addColorStop(0, C.skin); g.addColorStop(0.84, C.skin); g.addColorStop(1, C.skin + '00');
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(X(cx), Y(cy), S(R), 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+  if (close > 0.78) { // closed: a soft curved lash line, like a sleeping smile
+    ctx.beginPath(); ctx.moveTo(X(-0.46), Y(-0.5)); ctx.quadraticCurveTo(X(0), Y(-0.5 - 0.26), X(0.46), Y(-0.5));
+    ctx.strokeStyle = C.lash; ctx.lineWidth = S(0.075); ctx.lineCap = 'round'; ctx.globalAlpha = Math.min(1, (close - 0.78) / 0.15); ctx.stroke(); ctx.globalAlpha = 1;
+  }
+}
+
 /**
  * The mouth layer: a COPY of the character's own face triangles around the mouth, with the same material, the same
  * uvs and the same bone weights, so it is pixel-identical to the face where nothing is drawn and moves exactly with
  * the skin. The mouth picture (canvas) is blended into its colour (and glow, for Meshy's emissive skin) through a
  * second set of uvs laid flat across the mouth. Sharp at any size; no seams, no floating, no tearing.
  */
-function mouthLayer(obj, head, m, canvasTex) {
+function mouthLayer(obj, head, m, canvasTex, { box = MP, smooth = true, push = 0.45 } = {}) {
   obj.updateMatrixWorld(true); head.updateMatrixWorld(true);
   const toMouth = new THREE.Matrix4().multiplyMatrices(head.matrixWorld, new THREE.Matrix4().compose(m.pos, m.quat, m.scale)).invert();
   const all = []; obj.traverse((o) => { if (o.isSkinnedMesh && o.visible && !o.userData.mouthLayer) all.push(o); });
@@ -505,8 +534,8 @@ function mouthLayer(obj, head, m, canvasTex) {
   for (let i = 0; i < n; i++) {
     best.getVertexPosition(i, v); v.applyMatrix4(best.matrixWorld).applyMatrix4(toMouth); // mouth units: x × width, y × 0.7·width, z × width
     M[i * 3] = v.x; M[i * 3 + 1] = v.y; M[i * 3 + 2] = v.z;
-    mu[i * 2] = (v.x - MP.x0) / (MP.x1 - MP.x0); mu[i * 2 + 1] = (v.y - MP.y0) / (MP.y1 - MP.y0);
-    inside[i] = v.x > MP.x0 && v.x < MP.x1 && v.y > MP.y0 && v.y < MP.y1 && v.z > -3 && v.z < 1.5 ? 1 : 0; // deep enough for the carved smile's groove walls
+    mu[i * 2] = (v.x - box.x0) / (box.x1 - box.x0); mu[i * 2 + 1] = (v.y - box.y0) / (box.y1 - box.y0);
+    inside[i] = v.x > box.x0 && v.x < box.x1 && v.y > box.y0 && v.y < box.y1 && v.z > -3 && v.z < 1.5 ? 1 : 0; // deep enough for the carved smile's groove walls
   }
   const tri = []; const count = idx ? idx.count : n;
   for (let k = 0; k < count; k += 3) { const a = idx ? idx.getX(k) : k, b = idx ? idx.getX(k + 1) : k + 1, c = idx ? idx.getX(k + 2) : k + 2; if (inside[a] && inside[b] && inside[c]) tri.push(a, b, c); } // whole triangles only: one reaching far outside would smear the picture across it
@@ -516,7 +545,7 @@ function mouthLayer(obj, head, m, canvasTex) {
   // Smooth the carved smile out of the copy (membrane fill, below). The groove's walls caught the drawing at odd
   // angles (dark lines, red corner ticks); flattened, they disappear. The real model keeps its groove (the painted
   // smile shows when she isn't singing).
-  try {
+  if (smooth) try {
     const E = (x, y) => Math.hypot(x / 1.62, (y - 0.08) / 0.92); // the cover's ellipse (see drawCover)
     const used = new Set(tri);
     // Membrane fill: the skin around the mouth stays where it is; every point inside settles to the average depth of its
@@ -567,7 +596,7 @@ function mouthLayer(obj, head, m, canvasTex) {
   // place on screen): the real lip rims and groove can never poke through the smooth layer.
   const sc = new THREE.Vector3(); head.matrixWorld.decompose(new THREE.Vector3(), new THREE.Quaternion(), sc);
   const ms = new THREE.Vector3(); best.matrixWorld.decompose(new THREE.Vector3(), new THREE.Quaternion(), ms);
-  const pushLocal = (0.45 * m.scale.x * sc.x) / (ms.x || 1);
+  const pushLocal = (push * m.scale.x * sc.x) / (ms.x || 1);
   mat.onBeforeCompile = (sh) => {
     sh.uniforms.mouthMap = { value: canvasTex }; sh.uniforms.mouthPush = { value: pushLocal };
     sh.vertexShader = sh.vertexShader
@@ -601,6 +630,17 @@ export function addFace(obj, head, key, seed = 1, { quad = false } = {}) {
   const L = layouts.get(key); if (!L) return null;
   const skinMat = new THREE.MeshStandardMaterial({ color: new THREE.Color().setRGB(...L.skin), roughness: 0.75, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
   const lashMat = new THREE.MeshBasicMaterial({ color: '#2a1d22' });
+  // Blinking eyelids drawn on a copy of the skin around each eye (same method as the mouth: matches the skin exactly).
+  const eyeC = new THREE.Color().setRGB(...(L.eyeSkin || L.skin));
+  const lidColors = { skin: '#' + eyeC.getHexString(), lash: '#3A2329' };
+  const eyeLayers = L.lids.map((p) => {
+    const c = document.createElement('canvas'); c.width = c.height = EPX; const ctx = c.getContext('2d');
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.generateMipmaps = false; t.minFilter = THREE.LinearFilter;
+    let layer = null; try { layer = mouthLayer(obj, head, p, t, { box: EB, smooth: false, push: 0.3 }); } catch (e) { console.warn('Face: eyelid layer failed:', e.message); }
+    if (layer) layer.visible = false;
+    return layer ? { layer, ctx, t, last: -1 } : null;
+  });
+  const useEyeLayers = eyeLayers.every(Boolean);
   const lids = L.lids.map((p) => {
     // Group origin = top of the eye; the lid (unit disc hanging below the origin) grows downward as it closes.
     const g = new THREE.Group(); g.position.copy(p.pos); g.quaternion.copy(p.quat);
@@ -633,14 +673,18 @@ export function addFace(obj, head, key, seed = 1, { quad = false } = {}) {
   const rnd = (k) => { const x = Math.sin(seed * 12.9898 + k * 78.233) * 43758.5453; return x - Math.floor(x); };
   const blinks = []; for (let t = 0.6 + rnd(0) * 2, k = 1; t < 600; k++) { blinks.push(t); if (rnd(k * 3) < 0.15) blinks.push(t + 0.32); t += 2.4 + rnd(k) * 2.6; }
   return {
-    found: L.found, debug: { ...L.debug, mouth_layer: !!decalMesh, paint: painter ? painter.region : false },
+    found: L.found, debug: { ...L.debug, mouth_layer: !!decalMesh, eyelid_layers: useEyeLayers, paint: painter ? painter.region : false },
     canvas,
     /** t = song time (s); open = mouth shape {open, wide, round, teeth} or a number 0..1; forceClose (tests) sets the eyelids directly. */
     pose(t, open, forceClose = null, renderer = null) {
       let close = 0; const B = 0.2; // blink length (s)
       for (const b of blinks) { if (b > t) break; const k = (t - b) / B; if (k < 1) close = Math.max(close, k < 0.4 ? k / 0.4 : 1 - (k - 0.4) / 0.6); }
-      if (forceClose != null) close = forceClose;
-      for (const l of lids) { l.g.visible = close > 0.02; l.lid.scale.y = Math.max(0.001, close); l.lash.visible = close > 0.8; }
+      if (forceClose != null) close = forceClose; else if (globalThis.__forceBlink != null) close = globalThis.__forceBlink; // tests
+      if (useEyeLayers) {
+        const q = Math.round(close * 20) / 20;
+        for (const e of eyeLayers) { e.layer.visible = q > 0.02; if (q > 0.02 && q !== e.last) { drawLid(e.ctx, q, lidColors); e.t.needsUpdate = true; e.last = q; } }
+        for (const l of lids) l.g.visible = false;
+      } else for (const l of lids) { l.g.visible = close > 0.02; l.lid.scale.y = Math.max(0.001, close); l.lash.visible = close > 0.8; }
       const sh = typeof open === 'number' ? { open: clamp01(open), wide: 0.85 + 0.15 * clamp01(open), round: 0, teeth: 0.5 } : open;
       const singing = typeof open === 'number' ? sh.open > 0.04 : true; // an object = singing: the drawn mouth replaces the painted one
       const key = [sh.open, sh.wide, sh.round, sh.teeth].map((x) => x.toFixed(2)).join();

@@ -341,6 +341,8 @@ Implementation lessons:
   - hide the real face (colorWrite off) or turn the layer's skin texture blue, to tell "layer" from "model";
   - render close-ups with `peek.mjs` using `{face: 0}`.
 - **The cover's skin colour** is sampled from a ring around the mouth (the forehead's colour was wrong). The cover stays below the nose and fades out before the layer's edge.
+- **The same layer for blinking:** the old eyelid was a separate small dome with its own colour and material. It showed as an orange patch with a black bar over part of the eye. Now each eye gets a copy of the skin around it, with the closing lid drawn on it: skin sampled around the eyes, a curved lid edge, and a soft curved lash line when closed. The lid starts at the top of the eye, so the eyebrows stay visible. Test any lid position with `globalThis.__forceBlink = 0..1`.
+- **Check the finished video's frames, not only the preview.** The round 4 render looked right in the singing close-ups, but frame-by-frame extraction of another close-up caught the broken blink.
 - **Mouth design:** her own smile opening. The top edge sits on the painted smile line with the corners slightly raised, the corners are rounded, the bottom is round, and there's a tongue and a soft band of teeth. Closed, it is the smile line itself.
 
 ## 14. Known limitations and ideas for later

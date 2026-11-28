@@ -130,3 +130,28 @@ Meshy credits this round: **0**.
 
 ## World Style updated (same day, at the user's request)
 The World Style now has "kids-first rules" at the top and model-making rules for Meshy. It describes sceneries as open stages, a painted closed mouth, and no gripping, moving hair or moving-part props from Meshy. The colour profile is brighter (foliage `#6CC45E`, far hills `#5FC8B0`, water `#4FC6E0`, 6 flower colours). The studio-wide default look is focus, with no houses, no birds, calm wind and few clouds. Before and after copies are in `docs/world-style/`. Note: re-rendering Projects 05/06 will now give brighter grass and hills.
+
+---
+
+# Round 4 — the singing mouth (27 Nov 2026)
+Feedback: "I still do not like the mouth movement while singing." Also asked: finger bones for NEW characters only, clear facial expressions, close unneeded apps, finish everything (render + learnings) without visible errors.
+
+**What was wrong:** Frames from the round 3 video showed a ragged, torn mouth, sometimes in pieces. It sat on the chin, below her smile, jumped between unrelated shapes, and looked nothing like her own painted smile. Cause: it was painted into the skin texture, which Meshy cuts into many small scattered pieces around the mouth, at low resolution.
+
+**The fix: a mouth layer** (`FaceRig.mouthLayer`). The layer is a copy of Mira's own face triangles around the mouth. It uses the same material and bone weights, so it matches her skin exactly and moves with it. A sharp drawn mouth is blended into that material. Steps that failed or were found along the way (each confirmed with a test render):
+1. A separate "sticker" (decal) with its own material looked like a dark brown moustache. Meshy skin is a physical material driven by metalness and glow maps. → Use her own material.
+2. Fixed to the head bone, the sticker's edges tore when she moved, because the chin bends with the neck. → Use her own bone weights.
+3. The cover colour was sampled from the forehead. → It is now sampled from a ring of skin around the mouth.
+4. Red wedges at the corners. Tests (the cover painted green, the face hidden, the layer's skin turned blue) traced them to the carved smile groove: walls seen edge-on, partly cut triangles and blurred texture copies. → Copy whole triangles only, turn off mipmaps on the drawing, flatten the groove out of the copy (membrane fill), and draw the layer slightly in front along the line of sight (same place on screen).
+5. Moving vertices needs the bind pose: each moved point is solved through its own skinning. Normals are computed on the layer's own copy, after its triangles are set; otherwise the face went black.
+6. Mouth design: her own smile opening, with the top on her smile line, rounded raised corners, a dark inside, a small tongue and soft teeth.
+
+Checked with close-ups of all 6 singing close-ups (day, candy garden, sunset) from 3 angles, before rendering.
+
+**Also this round:**
+- Meshy rigging now asks for finger bones for new two-legged characters (`include_fingers`, with a fallback). Existing characters are unchanged.
+- The World Style asks for separated fingers.
+- Edge, Teams and Phone Link were closed.
+- Meshy credits: **0**.
+
+**Found in the round 4 render, then fixed:** a broken blink (an orange patch with a black bar over part of the eye) in the "Wave hello" close-up. The eyelids now use the same skin-copy layer as the mouth. Checked at lid positions 0, 0.3, 0.5, 0.6, 0.85 and 1 in day and sunset light. The eyebrows stay visible.
