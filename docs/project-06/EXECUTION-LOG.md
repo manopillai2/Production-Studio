@@ -162,3 +162,36 @@ Checked with close-ups of all 6 singing close-ups (day, candy garden, sunset) fr
 - Checked from the MP4 itself: the singing close-ups at 0:27 and 1:17 (10 fps runs), where the mouth is clean with matched skin and no marks; and the blink at 1:48 (30 fps), where the lids match the skin, the closed eyes show a soft lash line and the eyebrows stay visible.
 - Rendering: the first try was stopped at about 30% when Claude Code ran low on memory. The render now runs as its own Windows process (`Start-Process node export.mjs …`) with Edge, Teams and Phone Link closed, so Claude Code can't stop it.
 - Status: **Awaiting User Review**.
+
+---
+
+# Round 5 — the user's screenshots (28 Nov 2026)
+The user's screenshots are in `screenshots/`. The causes, fixes and status of each item are in `docs/LEARNINGS.md` ("Project 06 round 5").
+Summary of what changed:
+- **Rides:**
+  - the leg solver is off (a gentle outward swing only, ≤17°);
+  - the swing seat is 14 cm deep with the child at its back; the seesaw is narrower and Mira's legs spread wider;
+  - the merry-go-round seat is at the very edge;
+  - Mango is seated from skin points.
+- **Rendering and motion:**
+  - background blur keeps a focus band over all characters (Mango was blurred);
+  - the mouth has mipmaps and no dark outline;
+  - the ball uses real physics and rolls about its centre;
+  - natural elbows and knees; the wave hand in front of the face.
+- **Direction** (`direction.mjs`; the previous one is `direction-v3.mjs`):
+  - actions timed to the words (`W(line, word)`); the seesaw at the top on "up" and the bottom on "down";
+  - yes/no/wave as full shots;
+  - balloons framed whole and lifting on "float";
+  - the kite in front of Mira with the string to her hand (`holdKite`), framed by the camera;
+  - the ball only in the instrumental ball game.
+- **Engine:**
+  - every action setting reaches the moves; rides keep their exact timing;
+  - the kite tail length is a setting;
+  - the camera frames kites.
+- **Clearance:** 36/52 clear before the refit. The remaining 2–4 cm readings are resting contact (knee on the seat edge, the tail tip), checked in the shots.
+
+## Round 5 preview — DONE (28 Nov 2026)
+- `storage/media/exports/episode-17/2026-11-28T04-27-45-1080p/mira-and-mango-playground-party-1080p.mp4` (98.2 MB, gitignored).
+- 1920×1080, 30 fps, 212.37 s, −15.7 LUFS. Rendered as a detached process (it survives Claude Code reaping); took about 17 min.
+- A contact sheet every 3 s of the MP4 was checked. Status: **Awaiting User Review**.
+- Another Claude session (Project 07) shares the repo and server; the export was coordinated with it.
