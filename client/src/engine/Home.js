@@ -77,7 +77,9 @@ const ROOMS = {
   bedroom: { wall: '#FFE0EC', accent: '#FFFFFF', pattern: 'stars', dado: '#FFF8F0', curtain: '#9C8BFF', floor: 'wood', rug: ['#8CCBFF', '#B9E0FF', '#FFFFFF'], rugAt: [0.4, 0.1], rugR: 1.5, art: ['moon', 'rainbow'], windowX: 0.6, door: { side: 'left', z: 0.8, color: '#FFB84D' }, shelf: { side: 'right', z: 0.2 } },
   kitchen: { wall: '#FFF1B8', accent: '#FFF6CF', pattern: 'dots', dado: null, curtain: '#7FD6B8', floor: 'checker', rug: null, art: ['apple', 'heart'], windowX: -1.3, counter: true, door: { side: 'left', z: 1.0, color: '#FF8FA3' } },
 };
-export const ROOM_SIZE = { w: 8.4, d: 7.6, h: 3.1 };
+export const ROOM_SIZE = { w: 8.4, d: 7.6, h: 4.4 }; // tall walls: a child-height camera never sees over them
+/** The floor, side walls and ceiling run on past the open front, so a camera pulled back never sees the floor's edge. */
+const EXT = 7;
 
 /** An inward-facing wall with optional rectangular holes (windows). Origin: bottom centre; faces +z before placement. */
 function wallPlane(w, h, holes, material) {
@@ -117,16 +119,16 @@ function door(color) { const g = new THREE.Group(); g.add(noCast(at(box(1.0, 2.1
 function room(p) {
   const R = ROOMS[p.style] || ROOMS.living; const W = p.w ?? ROOM_SIZE.w, D = p.d ?? ROOM_SIZE.d, H = p.h ?? ROOM_SIZE.h;
   const g = new THREE.Group();
-  const floorTex = (R.floor === 'checker' ? checkerFloor('#FFF6E4', '#BDEBD8') : woodFloor()).clone(); floorTex.needsUpdate = true; floorTex.repeat.set(R.floor === 'checker' ? W / 1.0 : W, R.floor === 'checker' ? D / 1.0 : D);
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(W, D), new THREE.MeshStandardMaterial({ map: floorTex, roughness: 0.45, metalness: 0.0 })); floor.rotation.x = -Math.PI / 2; floor.position.y = 0.004; floor.receiveShadow = true; g.add(noCast(floor));
+  const floorTex = (R.floor === 'checker' ? checkerFloor('#FFF6E4', '#BDEBD8') : woodFloor()).clone(); floorTex.needsUpdate = true; floorTex.repeat.set(W, D + EXT);
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(W, D + EXT), new THREE.MeshStandardMaterial({ map: floorTex, roughness: 0.45, metalness: 0.0 })); floor.rotation.x = -Math.PI / 2; floor.position.set(0, 0.004, EXT / 2); floor.receiveShadow = true; g.add(noCast(floor));
   const wallTex = wallpaper(R.wall, R.accent, R.pattern); // 1 m tiles (ShapeGeometry uvs are in metres)
   const wallMat = new THREE.MeshStandardMaterial({ map: wallTex, roughness: 0.9 });
   const win = { x: R.windowX, y: R.counter ? 1.25 : 1.0, w: 1.7, h: 1.45 };
   const walls = [
     { name: 'back', len: W, pos: [0, 0, -D / 2], rot: 0, holes: [win] },
-    { name: 'left', len: D, pos: [-W / 2, 0, 0], rot: Math.PI / 2, holes: [] },
-    { name: 'right', len: D, pos: [W / 2, 0, 0], rot: -Math.PI / 2, holes: [] },
-    { name: 'front', len: W, pos: [0, 0, D / 2], rot: Math.PI, holes: [] },
+    { name: 'left', len: D + EXT, pos: [-W / 2, 0, EXT / 2], rot: Math.PI / 2, holes: [] },
+    { name: 'right', len: D + EXT, pos: [W / 2, 0, EXT / 2], rot: -Math.PI / 2, holes: [] },
+    { name: 'front', len: W, pos: [0, 0, D / 2 + EXT], rot: Math.PI, holes: [] },
   ];
   const wallG = {};
   for (const wl of walls) {
@@ -139,14 +141,14 @@ function room(p) {
   }
   wallG.back.add(windowSet(win.x, win.y, win.w, win.h, R.wall, R.curtain));
   // ceiling faces down only (invisible from above), with a soft round lamp
-  const ceil = new THREE.Mesh(new THREE.PlaneGeometry(W, D), mat('#FFF9F0', { roughness: 0.95 })); ceil.rotation.x = Math.PI / 2; ceil.position.y = H; g.add(noCast(ceil));
+  const ceil = new THREE.Mesh(new THREE.PlaneGeometry(W, D + EXT), mat('#FFF9F0', { roughness: 0.95, emissive: '#FFF1DC', emissiveIntensity: 0.55 })); ceil.position.z = EXT / 2; // glows softly: the sky light's GREEN ground colour shone up onto it ceil.rotation.x = Math.PI / 2; ceil.position.y = H; g.add(noCast(ceil));
   const lamp = at(mesh(new THREE.SphereGeometry(0.26, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2), mat('#FFFFFF', { emissive: '#FFE9B8', emissiveIntensity: 0.6 })), 0, H - 0.005, -0.4); lamp.rotation.x = Math.PI; g.add(noCast(lamp));
   // wall pictures, a shelf, a door
   const artX = R.windowX < 0 ? [1.2, 2.5] : [-2.4, -1.1];
   if (p.style === 'living') { artX[0] = 1.5; artX[1] = 2.7; } // the sofa sits under the window; pictures on the right of the back wall
   R.art.forEach((k, i) => { if (artX[i] == null) return; const f = frame(k, 0.62, 0.62, [C.blue, C.coral][i]); f.position.set(artX[i], p.style === 'living' ? 2.15 : 1.75, 0.03); wallG.back.add(f); });
-  if (R.shelf) { const s = bookshelf(C.white); s.position.set(R.shelf.z, 1.45, 0.14); wallG[R.shelf.side].add(s); }
-  if (R.door) { const d = door(R.door.color); d.position.set(R.door.side === 'right' ? -R.door.z : R.door.z, 0, 0.03); wallG[R.door.side].add(d); }
+  if (R.shelf) { const s = bookshelf(C.white); s.position.set(R.shelf.z + (R.shelf.side === 'left' ? EXT / 2 : -EXT / 2), 1.45, 0.14); wallG[R.shelf.side].add(s); }
+  if (R.door) { const d = door(R.door.color); d.position.set(R.door.side === 'right' ? -R.door.z - EXT / 2 : R.door.z + EXT / 2, 0, 0.03); wallG[R.door.side].add(d); }
   if (R.rug) { const rug = new THREE.Mesh(new THREE.CircleGeometry(p.rug_r ?? R.rugR, 64), new THREE.MeshStandardMaterial({ map: rugTex(...R.rug), roughness: 0.95 })); rug.rotation.x = -Math.PI / 2; const ra = p.rug_at || R.rugAt; rug.position.set(ra[0], 0.012, ra[1]); rug.receiveShadow = true; g.add(noCast(rug)); }
   // A wall's decorations (door, shelf, frames, window) would show their BACKS if the camera stood outside that wall
   // (the wall itself is invisible from outside). Hide them whenever the camera is on the outside of their wall.

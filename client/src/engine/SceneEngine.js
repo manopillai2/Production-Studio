@@ -647,7 +647,9 @@ export class SceneEngine {
       B.walk.action.time = (wt % B.walk.dur + B.walk.dur) % B.walk.dur;
     }
     let actW = 0;
-    for (const x of B.actions) {
+    // Gestures come BEFORE held postures when sharing the weight: a held pose (sit, kneel, hold a cup, a ride) listed first
+    // used to take it all, so every later sip, pat, wave or hug was silently invisible (Project 07).
+    for (const x of [...B.actions].sort((p, q) => (p.hold ? 1 : 0) - (q.hold ? 1 : 0))) {
       const w = u >= x.at && u <= x.at + x.dur ? Math.min(x.at <= 0.01 ? 1 : fade(u - x.at, 0.25), x.hold ? 1 : fade(x.at + x.dur - u, 0.3)) : 0;
       x.action.time = Math.min(x.dur, Math.max(0, u - x.at + (x.offset || 0))); // offset: start part-way into a repeating ride, in step with the lyric
       x.action.setEffectiveWeight(w * (1 - actW)); actW = Math.min(1, actW + w);
@@ -890,13 +892,31 @@ export class SceneEngine {
     });
   }
 
+  /** Bring a hand to just under the mouth (cup rim at the lips): a few rounds of "turn the forearm, then the upper arm
+   *  toward the target", blended by k. The turns are undone before the next frame (same list as the leg clearing). */
+  _reachMouth(a, s, k) {
+    const B = a.body; const live = (n) => B.rig.map[n] && B.obj.getObjectByName(B.rig.map[n].name);
+    const arm = live(`${s}Arm`), fore = live(`${s}Fore`), hand = live(`${s}Hand`), head = live('head'); if (!arm || !fore || !hand || !head || k <= 0) return;
+    const H = a.h0 * a.holder.scale.y; const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(a.holder.getWorldQuaternion(new THREE.Quaternion()));
+    const target = head.getWorldPosition(new THREE.Vector3()).addScaledVector(fwd, 0.14 * H).add(new THREE.Vector3(0, -0.005 * H, 0)); // the cup hangs just below the palm
+    const start = [arm.quaternion.clone(), fore.quaternion.clone()]; (B.legUndo ||= []).push([arm, start[0].clone()], [fore, start[1].clone()]);
+    const palm = () => { const w = hand.getWorldPosition(new THREE.Vector3()); const kn = hand.children.filter((c) => c.isBone).map((c) => c.getWorldPosition(new THREE.Vector3())); return kn.length ? w.lerp(kn.reduce((t, v) => t.add(v), new THREE.Vector3()).multiplyScalar(1 / kn.length), 0.75) : w; };
+    for (let i = 0; i < 10; i++) for (const bone of [fore, arm]) {
+      const p = bone.getWorldPosition(new THREE.Vector3()); const from = palm().sub(p).normalize(); const to = target.clone().sub(p).normalize();
+      const turn = new THREE.Quaternion().setFromUnitVectors(from, to); const pq = bone.parent.getWorldQuaternion(new THREE.Quaternion());
+      bone.quaternion.premultiply(pq.clone().invert().multiply(turn).multiply(pq)); bone.updateMatrixWorld(true);
+    }
+    arm.quaternion.slerpQuaternions(start[0], arm.quaternion.clone(), k); fore.quaternion.slerpQuaternions(start[1], fore.quaternion.clone(), k); arm.updateMatrixWorld(true);
+  }
+
   _poseFaces(g, t) {
     const withFace = g.actors.filter((a) => a.face);
     if (!withFace.length) return;
     const line = this.lines.find((l) => t >= l.start && t < l.end) || null;
     const own = line ? withFace.filter((a) => a.usages?.includes(line.i)) : [];
     const singers = new Set(own.length ? own : withFace);
-    withFace.forEach((a) => a.face.pose(t, line && singers.has(a) ? mouthShape(this.env, t, line) : 0, null, this.renderer));
+    withFace.forEach((a) => { const sf = a.actor.sleep_from; const shut = sf != null && t >= sf ? Math.min(1, (t - sf) / 0.5) : null; // falling asleep: eyes close and stay closed, mouth rests
+      a.face.pose(t, shut == null && line && singers.has(a) ? mouthShape(this.env, t, line) : 0, shut, this.renderer); });
   }
   _poseActors(g, u, D, withClips = true) {
     const travelling = (x) => TRAVEL_MOTIONS.includes(x.motionActor.motion?.type);
@@ -979,6 +999,10 @@ export class SceneEngine {
       const live = (k) => B.rig.map[k] && B.obj.getObjectByName(B.rig.map[k].name); // the character's OWN bones, not the analysis copy
       const hand = live(h.hand === 'left' ? 'lHand' : 'rHand'); if (!hand) continue;
       a.holder.updateMatrixWorld(true);
+      // Sips (hold.sip_at: seconds into the shot): the arm is finished with a small reach so the rim really meets the lips,
+      // whatever the character's arm length (a pose alone stopped short on a toddler).
+      const near = Array.isArray(h.sip_at) ? Math.min(...h.sip_at.map((x) => Math.abs(u - x))) : Infinity;
+      if (near < 0.3) this._reachMouth(a, h.hand === 'left' ? 'l' : 'r', ease((0.3 - near) / 0.2));
       const inv = new THREE.Matrix4().copy(g.group.matrixWorld).invert();
       const wrist = hand.getWorldPosition(new THREE.Vector3());
       const kn = hand.children.filter((c) => c.isBone).map((c) => c.getWorldPosition(new THREE.Vector3())); // finger roots (knuckles)

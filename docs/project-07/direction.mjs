@@ -42,13 +42,14 @@ const TV_BOX = [[3.75, 1.35, -1.3], [3.3, 0, 0.2]]; // the whole TV in frame
 const SEATS_SOFA = { type: 'seats', pos: SOFA, seats: { a: { pos: [-0.42, SEAT_Y, 0.02] }, b: { pos: [0.4, SEAT_Y, 0.06] } } };
 const livingProps = (plant = true) => [prop(CARD.sofa, SOFA, 1.9), ...(plant ? [prop(CARD.plant, [-2.25, 0, -3.35], 0.89, 0.3)] : [])];
 // bedroom: bed head against the back wall, a bedside table, the fan on the right facing the room
-const BED = [-1.6, 0, -3.0], MATTRESS_Y = 0.42;
+const BED = [-1.4, 0, -2.6], MATTRESS_Y = 0.42; // side-on: the footboard never hides the child
 const FAN = (on) => ({ type: 'fan', pos: [2.8, 0, -0.6], rot_y: -1.1, height: 1.15, ...(on != null ? { on: { at: on } } : {}) });
 const FAN_HEAD = [2.8, 1.15, -0.6];
 const FAN_BOX = [[2.8, 1.6, -0.6], [3.1, 0, -0.3], [2.5, 0, -0.9]];
-const NIGHT = { type: 'nightstand', pos: [-0.5, 0, -3.5], lit: true };
-const bedProps = () => [prop(CARD.bed, BED, 1.64), prop(CARD.teddy, [-0.95, 0, -2.35], 0.39, -0.5)];
-const LIE = { type: 'seats', pos: BED, seats: { lie: { pos: [0, MATTRESS_Y + 0.06, 0.12], rot: [-Math.PI / 2, 0, 0] } } };
+const NIGHT = { type: 'nightstand', pos: [-2.65, 0, -3.45], lit: true };
+const BED_BOX = [[-2.2, 0.95, -2.6], [-0.65, 0.3, -2.4]];
+const bedProps = () => [prop(CARD.bed, BED, 1.64, Math.PI / 2), prop(CARD.teddy, [-2.55, 0, -2.2], 0.39, 0.5)];
+const LIE = { type: 'seats', pos: BED, seats: { lie: { pos: [0.12, MATTRESS_Y + 0.06, 0], rot: [-Math.PI / 2, Math.PI / 2, 0] } } };
 // kitchen: worktop along the back wall, fridge on the right wall (hinge at the back: it opens away from the camera)
 const FRIDGE = (open) => ({ type: 'fridge', pos: [1.65, 0, -3.42], rot_y: 0, ...(open ? { open } : {}) });
 const FRIDGE_C = [1.65, 0.8, -3.0];
@@ -73,7 +74,7 @@ const M_L = [0.95, 0, -1.2], K_L = [0.0, 0, -1.2]; // level with each other: bot
     ...livingProps(),
     mommy(M_L, { rot: [0, -0.5, 0], actions: [A('wave', 3.6, { seconds: 1.8 })] }),
     leo([-3.2, 0, 0.2], { motion: { type: 'path', to: K_L, start: 0.6 }, turn_to: 2 }), // actors: 0 sofa, 1 plant, 2 Mommy, 3 Leo
-  ], { preset: 'crane', size: 'wide', transition: 'cut', dof: 'off' }, morning); }
+  ], { preset: 'wide', size: 'full', distance: 1.0, height: 0.15, transition: 'cut', dof: 'off', include: [[0, 2.9, -1.2]] }, morning); }
 { const s0 = st(0); // "Mommy, Mommy, what is this?" — he looks up at her, tugs, then points at the sofa
   shot('Mommy, Mommy, what is this? (Leo asks, points at the sofa)', 0, 0, s0, st(1), [ROOM('living'), TV()], [
     ...livingProps(false),
@@ -115,41 +116,41 @@ const M_T = [2.3, 0, -2.4], K_T = [1.45, 0, -1.8]; // deeper than the TV: they f
   shot('This is a TV, look and see! (the TV switches on)', 5, 5, s0, st(6), [ROOM('living'), TV(rel(wt(5, 3), s0) - 0.1)], [
     mommy(M_T, { rot: [0, yawTo(M_T, TV_SCREEN), 0], actions: [A('present', rel(wt(5, 0), s0), { hand: 'left', seconds: Math.max(2.5, en(5) - st(5)) })] }),
     leo(K_T, { rot: [0, yawTo(K_T, TV_SCREEN), 0] }),
-  ], { preset: 'group', size: 'full', yaw: 0.2, height: -0.2, include: TV_BOX }, day); }
+  ], { preset: 'group', size: 'full', distance: 1.2, yaw: 0.2, height: -0.2, include: TV_BOX }, day); }
 { const s0 = st(6); // "Oh, a TV! TV, TV!" — hop, then a point on every "TV"
   const pts = [2, 3, 4].map((n) => wt(6, n));
   shot('Oh, a TV! TV, TV! (Leo points on every "TV")', 6, 6, s0, st(7), [ROOM('living'), TV(-10)], [
     leo(K_T, { rot: [0, yawTo(K_T, TV_SCREEN), 0], actions: [A('hop', rel(wt(6, 0), s0) - 0.12, { height: 0.07, seconds: 0.5 }), A('point', rel(pts[0], s0) - 0.2, { points: 3, height: 'level', hand: 'right', seconds: Math.max(1.4, pts[2] - pts[0] + 0.7) })] }),
-  ], { preset: 'group', size: 'full', yaw: 0.35, height: -0.5, include: TV_BOX }, day); }
+  ], { preset: 'group', size: 'full', distance: 1.2, yaw: 0.35, height: -0.4, include: TV_BOX }, day); }
 { const s0 = st(7); // "Sing a little song with me!" — the TV star sings; they sway together on the beat, facing us
   shot('Sing a little song with me! (sway together, the TV star sings)', 7, 7, s0, st(8), [ROOM('living'), TV(-10)], [
     ...livingProps(false),
     mommy([1.6, 0, -1.55], { rot: [0, -0.35, 0], actions: [A('sway', 0.2, { beats: 6, seconds: 6 * BEAT, arms: 'low' })] }),
     leo([0.75, 0, -1.0], { rot: [0, -0.15, 0], actions: [A('sway', 0.2, { beats: 6, seconds: 6 * BEAT, arms: 'up' })] }),
-  ], { preset: 'group', size: 'full', yaw: 0.15, height: -0.3, include: TV_BOX }, day); }
+  ], { preset: 'group', size: 'full', distance: 1.2, yaw: 0.15, height: -0.3, include: TV_BOX }, day); }
 
 // ======================= BEDROOM (warm evening light) =======================
 // ---- Learning 3: BED ----
-const M_B = [0.1, 0, -2.2], K_B = [-0.75, 0, -1.6];
+const M_B = [0.15, 0, -2.0], K_B = [-0.65, 0, -1.4];
 { const s0 = st(8);
   shot('This is a bed, soft and sweet! (bedroom; Mommy presents)', 8, 8, s0, st(9), [ROOM('bedroom'), FAN(), NIGHT], [
     ...bedProps(),
     mommy(M_B, { rot: [0, -0.7, 0], actions: [A('present', rel(wt(8, 0), s0), { hand: 'right', seconds: Math.max(2.5, en(8) - st(8)) })] }),
     leo(K_B, { rot: [0, -0.9, 0], look_at: 2 }),
-  ], { preset: 'dolly-in', size: 'full', distance: 1.2, yaw: 0.2, height: -0.2, include: [[-2.1, 0.9, -3.75], [-1.1, 0.5, -2.25]], transition: 'iris' }, evening); }
+  ], { preset: 'dolly-in', size: 'full', distance: 1.2, yaw: 0.15, height: -0.1, include: BED_BOX, transition: 'iris' }, evening); }
 { const s0 = st(9); // "Oh, a bed! Bed, bed!" — he pats the soft bed on every "bed"
   const pts = [2, 3, 4].map((n) => wt(9, n));
   shot('Oh, a bed! Bed, bed! (Leo pats the bed on every "bed")', 9, 9, s0, st(10), [ROOM('bedroom'), FAN(), NIGHT], [
     ...bedProps(),
-    leo([-0.85, 0, -2.6], { rot: [0, -Math.PI / 2, 0], actions: [A('hop', rel(wt(9, 0), s0) - 0.12, { height: 0.06, seconds: 0.5 }), A('pat', rel(pts[0], s0) - 0.25, { hand: 'right', pats: 3, reach: 0.55, seconds: Math.max(1.4, pts[2] - pts[0] + 0.7) })] }),
-  ], { preset: 'group', size: 'full', yaw: -0.35, height: -0.3, include: [[-2.1, 0.9, -3.75], [-1.1, 0.4, -2.25]] }, evening); }
+    leo([-0.55, 0, -1.9], { rot: [0, -2.0, 0], actions: [A('hop', rel(wt(9, 0), s0) - 0.12, { height: 0.06, seconds: 0.5 }), A('pat', rel(pts[0], s0) - 0.25, { hand: 'right', pats: 3, reach: 0.55, seconds: Math.max(1.4, pts[2] - pts[0] + 0.7) })] }),
+  ], { preset: 'group', size: 'full', yaw: -0.4, height: -0.1, include: BED_BOX }, evening); }
 { const s0 = st(10); // "Rest your head and go to sleep!" — Leo lies down, Mommy tucks the quilt up to his chin
   shot('Rest your head and go to sleep! (tucked in)', 10, 10, s0, st(11), [ROOM('bedroom'), FAN(), NIGHT, LIE,
-    { type: 'blanket', pos: [BED[0], MATTRESS_Y + 0.02, BED[2] + 0.42], w: 0.95, l: 0.95, color: '#B79CFF', cover: { at: 0.6, dur: 2.0 } }], [
+    { type: 'blanket', pos: [BED[0] + 0.3, MATTRESS_Y + 0.02, BED[2]], rot_y: Math.PI / 2, w: 0.85, l: 0.85, color: '#B79CFF', bump: 0.25, cover: { at: 0.6, dur: 2.0 } }], [
     ...bedProps(),
-    leo([BED[0], 0, BED[2]], { ride: { equip: 3, seat: 'lie', lift: 0.08 }, actions: [hold('lie', 30)] }),
-    mommy([-0.6, 0, -2.4], { rot: [0, -1.35, 0], look_at: 2, actions: [A('tuck', 0.4, { seconds: 2.6 }), A('nod', 3.4, { nods: 1, amount: 10, seconds: 1.2 })] }),
-  ], { preset: 'dolly-in', size: 'full', yaw: 0.25, height: 0.6, include: [[-2.1, 0.9, -3.75]] }, evening); }
+    leo([BED[0], 0, BED[2]], { sleep_from: +wt(10, 5).toFixed(2), ride: { equip: 3, seat: 'lie', lift: 0.08 }, actions: [hold('lie', 30)] }),
+    mommy([-1.35, 0, -3.4], { rot: [0, 0, 0], look_at: 2, actions: [A('tuck', 0.4, { seconds: 2.6 }), A('nod', 3.4, { nods: 1, amount: 10, seconds: 1.2 })] }),
+  ], { preset: 'dolly-in', size: 'full', yaw: 0.05, height: 1.2, include: BED_BOX }, evening); }
 
 // ---- Learning 4: FAN ----
 const M_F = [2.0, 0, -2.4], K_F = [1.1, 0, -1.9];
@@ -165,7 +166,7 @@ const M_F = [2.0, 0, -2.4], K_F = [1.1, 0, -1.9];
   ], { preset: 'group', size: 'full', yaw: 0.3, height: -0.6, include: FAN_BOX }, evening); }
 { const s0 = st(13); // "Round and round and round it goes!" — both turn round in the breeze, as the blades do
   shot('Round and round and round it goes! (both twirl with the fan)', 13, 13, s0, 70.5, [ROOM('bedroom'), FAN(-10), NIGHT], [
-    mommy([0.9, 0, -1.9], { rot: [0, -0.2, 0], actions: [A('twirl', rel(wt(13, 0), s0) + 0.1, { seconds: 2.6 }), A('sway', 3.2, { beats: 4, seconds: 4 * BEAT })] }),
+    mommy([0.9, 0, -1.9], { rot: [0, -0.2, 0], look_at: 1, actions: [A('sway', rel(wt(13, 0), s0), { beats: 8, seconds: 8 * BEAT })] }), // Mommy sways; only the child twirls
     leo([0.1, 0, -1.15], { rot: [0, -0.1, 0], actions: [A('twirl', rel(wt(13, 0), s0), { seconds: 2.4 }), A('twirl', rel(wt(13, 4), s0) + 0.2, { seconds: 2.2 })] }),
   ], { preset: 'group', size: 'full', yaw: 0.15, height: -0.3, include: FAN_BOX }, evening); }
 
@@ -181,7 +182,7 @@ const M_F = [2.0, 0, -2.4], K_F = [1.1, 0, -1.9];
     ...kitchenProps(),
     mommy([-3.5, 0, -1.0], { motion: { type: 'path', to: [-0.6, 0, -1.6], start: 0.4 } }),
     leo([-3.9, 0, -0.4], { motion: { type: 'path', to: [-1.2, 0, -0.9], start: 0.9 } }),
-  ], { preset: 'dolly-in', size: 'full', distance: 1.7, height: 0.1, transition: 'iris', dof: 'off', include: [[-3.9, 0.9, -3.6], [2.1, 1.85, -3.1]] }, day); }
+  ], { preset: 'dolly-in', size: 'full', distance: 1.15, height: -0.1, transition: 'iris', dof: 'off', include: [[-2.9, 0.9, -3.5], [2.1, 1.85, -3.1]] }, day); }
 { const s0 = 85.0; // Leo looks up at the big fridge, happy hops on the beat; Mommy steps up beside it
   const b0 = Math.ceil((s0 + 0.6 - 0.455) / BEAT) * BEAT + 0.455;
   shot('Instrumental · Leo looks up at the big fridge', 13, 13, s0, st(14), [ROOM('kitchen'), FRIDGE(), CUP()], [
@@ -211,12 +212,12 @@ const DOOR = (at, close) => ({ at, dur: 0.9, ...(close != null ? { close } : {})
   ], { preset: 'dolly-in', size: 'full', yaw: -0.1, height: -0.3, include: FRIDGE_BOX }, day); }
 
 // ---- Learning 6: CUP ----
-const M_C = [1.05, 0, -1.6], K_C = [1.85, 0, -1.25];
+const M_C = [1.05, 0, -1.6], K_C = [1.68, 0, -1.38]; // close enough to pass the cup
 { const s0 = st(17); // Mommy kneels with the cup and holds it out; on "take a sip" Leo takes it
   const give = rel(wt(17, 4), s0);
-  shot('This is a cup, take a sip! (Mommy offers the cup)', 17, 17, s0, st(18), [ROOM('kitchen'), FRIDGE(), CUP([{ actor: 0, hand: 'right', from: 0, to: give }, { actor: 1, hand: 'right', from: give, to: 99 }])], [
+  shot('This is a cup, take a sip! (Mommy offers the cup)', 17, 17, s0, st(18), [ROOM('kitchen'), FRIDGE(), CUP([{ actor: 0, hand: 'right', from: 0, to: give }, { actor: 1, hand: 'left', from: give, to: 99 }])], [
     mommy(M_C, { rot: [0, yawTo(M_C, K_C), 0], look_at: 1, actions: [A('kneel', 0, { down: 1.0, seconds: 30, hold: true }), A('holdCup', 0.2, { base: 'kneel', hand: 'right', lift: 'yes', seconds: give - 0.2 })] }),
-    leo(K_C, { rot: [0, yawTo(K_C, M_C), 0], look_at: 0, actions: [A('holdCup', give, { hand: 'right', seconds: 30, hold: true })] }),
+    leo(K_C, { rot: [0, yawTo(K_C, M_C), 0], look_at: 0, actions: [A('holdCup', give, { hand: 'left', seconds: 30, hold: true })] }), // the hand on the camera side
   ], { preset: 'group', size: 'full', yaw: 0.0, height: -0.6 }, day); }
 { const s0 = st(18); // "Oh, a cup! Cup, cup!" — he lifts it to show us on every "cup"
   const c = [2, 3, 4].map((n) => wt(18, n));
@@ -225,7 +226,7 @@ const M_C = [1.05, 0, -1.6], K_C = [1.85, 0, -1.25];
   ], { preset: 'group', size: 'medium', yaw: 0.15, height: -0.3, target: 0 }, day); }
 { const s0 = st(19); // "Sip, sip, sip, sip, sip!" — one sip on each "sip"; Mommy claps along
   const sips = [0, 1, 2, 3, 4].map((n) => wt(19, n));
-  shot('Sip, sip, sip, sip, sip! (a sip on every "sip")', 19, 19, s0, st(20), [ROOM('kitchen'), FRIDGE(), CUP([{ actor: 1, hand: 'right', from: 0, to: 99 }])], [
+  shot('Sip, sip, sip, sip, sip! (a sip on every "sip")', 19, 19, s0, st(20), [ROOM('kitchen'), FRIDGE(), CUP([{ actor: 1, hand: 'right', from: 0, to: 99, sip_at: sips.map((t) => rel(t, s0) + 0.05) }])], [
     mommy([0.75, 0, -1.7], { rot: [0, 0.6, 0], look_at: 1, actions: [A('clap', rel(sips[0], s0), { claps: 5, seconds: sips[4] - sips[0] + 0.5 })] }),
     leo([1.6, 0, -1.0], { rot: [0, -0.35, 0], actions: [A('holdCup', 0, { hand: 'right', seconds: 30, hold: true }), ...sips.map((t, k) => A('sip', rel(t, s0) - 0.3, { hand: 'right', sips: 1, seconds: Math.max(0.55, Math.min(0.85, (sips[k + 1] ?? t + 0.85) - t)) })), A('cheer', rel(en(19), s0) + 0.2, { height: 0.05, seconds: 1.1 })] }),
   ], { preset: 'dolly-in', size: 'full', yaw: -0.1, height: -0.3 }, day); }
@@ -245,7 +246,7 @@ const M_C = [1.05, 0, -1.6], K_C = [1.85, 0, -1.25];
   shot('Recap · …bed and fan (bedroom)', 21, 21, cut, st(22), [ROOM('bedroom'), FAN(-10), NIGHT], [
     ...bedProps(),
     leo([0.6, 0, -1.6], { rot: [0, 0.2, 0], actions: [A('point', rel(wt(21, 2), cut) - 0.1, { points: 1, height: 'low', hand: 'right', seconds: 0.8 }), A('point', rel(wt(21, 4), cut) - 0.1, { points: 1, height: 'high', hand: 'left', seconds: 0.9 })] }),
-  ], { preset: 'group', size: 'full', yaw: 0.1, height: -0.2, include: [[-2.1, 0.9, -3.75], ...FAN_BOX], transition: 'cut' }, evening); }
+  ], { preset: 'group', size: 'full', distance: 0.82, yaw: 0.1, height: -0.2, include: [...BED_BOX, ...FAN_BOX], transition: 'cut' }, evening); }
 { const s0 = st(22); // "Fridge and cup — yes, I can!" — in the kitchen with his cup; a proud cheer on "yes, I can"
   shot('Recap · Fridge and cup — yes, I can! (kitchen, a proud cheer)', 22, 22, s0, st(23), [ROOM('kitchen'), FRIDGE(), CUP([{ actor: 0, hand: 'right', from: 0, to: 99 }])], [
     leo([0.4, 0, -2.0], { rot: [0, 0.5, 0], actions: [A('holdCup', 0, { hand: 'right', seconds: 30, hold: true }), A('holdCup', rel(wt(22, 2), s0) - 0.2, { hand: 'right', lift: 'yes', seconds: 1.0 }), A('jump', rel(wt(22, 3), s0) - 0.2, { height: 0.12, seconds: 1.1 })] }),
@@ -276,7 +277,7 @@ const M_C = [1.05, 0, -1.6], K_C = [1.85, 0, -1.25];
     ...livingProps(),
     mommy([SOFA[0] - 0.42, 0, SOFA[2]], { ride: { equip: 2, seat: 'a', lift: 0.02 }, look_at: 3, actions: [hold('sitRelax', 30)] }),
     leo([SOFA[0] + 0.4, 0, SOFA[2]], { ride: { equip: 2, seat: 'b', lift: 0.02 }, look_at: 2, actions: [hold('sitRelax', 30, { short: 'yes' })] }),
-  ], { preset: 'group', size: 'full', distance: 1.9, height: 0.0, transition: 'dissolve', dof: 'off', include: [[-2.3, 0.9, -3.4], ...TV_BOX] }, evening); }
+  ], { preset: 'group', size: 'full', distance: 1.4, height: 0.0, transition: 'dissolve', dof: 'off', include: [[-2.3, 0.9, -3.4], ...TV_BOX] }, evening); }
 
 // ---------- write the shots (replace all) ----------
 if (process.argv[2] === '--dry') { console.log(JSON.stringify(shots.map((s) => [s.title, s.start_override, s.end_override]), null, 0)); process.exit(0); }

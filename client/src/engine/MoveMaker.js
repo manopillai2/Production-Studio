@@ -123,7 +123,7 @@ const STRADDLE = (k = 1) => ({ legs: [-58 * k, 72 * k], lThigh: [0, 0, 52], rThi
 /** At the edge of a merry-go-round, facing out: legs dangle over the rim, hands hold the edge beside the hips. */
 const EDGE = () => ({ legs: [-78, 78], up: -0.2, spine: [4], armUp: -68, arms: [12, 0], fores: [-22] });
 /** On a slide: legs straight out along the chute, leaning back a little, hands on the sides. */
-const SLIDE = () => ({ legs: [-84, 6], up: -0.2, spine: [-8], armUp: -62, arms: [-18, -20], fores: [-14] });
+const SLIDE = () => ({ legs: [-94, 4], lFoot: [-12], rFoot: [-12], up: -0.2, spine: [-8], armUp: -62, arms: [-18, -20], fores: [-14] }); // legs lifted a little and toes up: feet glide above the chute
 
 /** Base postures (Project 07): any gesture can be performed ON one of these (act.base), e.g. Mommy presents while
  *  kneeling, or the child points while sitting. Lower body + trunk only, so the gesture's arms stay its own. */
@@ -569,7 +569,7 @@ export const MOVES = {
     params: { seconds: { label: 'Length (s)', min: 1, max: 6, step: 0.1, value: 2.4 }, shakes: { label: 'Shakes', min: 2, max: 16, step: 1, value: 8 }, repeats: { label: 'Repeat', min: 1, max: 3, step: 1, value: 1 } },
     make: ({ seconds, shakes }) => {
       // hugging himself, shoulders up, a quick little shake side to side (not frantic), then a happy release
-      const hug = (k) => ({ arms: [-64, -62], fores: [-96, -30], armUp: -30, spine: [10, 0, 3 * k], head: [8, 0, -4 * k], up: -0.025, legs: [-10, 18] });
+      const hug = (k) => ({ arms: [-46, -54], fores: [-72, -34], armUp: -52, spine: [10, 0, 3 * k], head: [8, 0, -4 * k], up: -0.025, legs: [-10, 18] });
       const keys = [{ t: 0, pose: {} }, { t: 0.12, pose: hug(0) }]; const n = Math.max(2, Math.round(shakes));
       for (let i = 0; i < n; i++) keys.push({ t: 0.14 + (0.72 * (i + 1)) / n, pose: hug(i % 2 ? 1 : -1) });
       keys.push({ t: 0.9, pose: hug(0) }, { t: 1, pose: {} });
