@@ -440,6 +440,13 @@ General lessons from this round:
 | `headTilt` silently skipped on a human | It's a four-legged move; the engine warns in the render log. | Read the render warnings; use `nod` or `look` on two-legged characters. | Fixed |
 | A peek close-up crashed | `face: i` counts ALL actors in the shot, including props (the sofa was actor 0). | Count props when indexing actors (`look_at`, `turn_to`, `target`, `hold.actor`, peek `face`). | Noted |
 
+### Working cost-efficiently (user rule, 28 Nov 2026; applies to every project)
+- Sonnet by default, Haiku for routine self-contained helper jobs, **never Opus**. The user-wide rules are in `~/.claude/CLAUDE.md`.
+- Search before reading; read only the needed ranges; keep command output short.
+- Tile frames into one image; check changed shots first, then one full check before delivery.
+- Fix every instance of a problem in one round, and verify in the preview before the ~17 min full render.
+- Read this file and `docs/WORK-IN-PROGRESS.md` first on a new project. What cost the most so far was repeated fix-and-render rounds: root causes found late (timing units, the leg solver) and fixes checked on only some shots.
+
 ## 14. Known limitations and ideas for later
 
 - Faces: no expressions on cue (blinks and singing mouths only). Lip-sync is spelling-based (no phoneme dictionary). Faint traces of the carved smile can show at the mouth corners. Four-legged characters (Mango) keep their painted mouth (his rig has a jaw bone that could be used).
