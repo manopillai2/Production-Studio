@@ -1,7 +1,7 @@
 // Deterministic 3D scene engine: renderAt(t) always produces the same frame for the same time, so the
 // browser preview (driven by the audio clock) and the MP4 export (frame by frame) match exactly.
 import * as THREE from 'three';
-import { checkClearance, clearLegs } from './Clearance.js';
+import { checkClearance, clearLegs, equipSD } from './Clearance.js';
 import { clone as skeletonClone } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { loadGLTF, measureBox } from './three-common.js';
 import { analyseRig, buildClip, MOVES } from './MoveMaker.js';
@@ -175,11 +175,26 @@ export function motionAt(actor, u, D) {
       break; }
     case 'drift': pos[0] = base[0] + (m.dx ?? 4) * (u / D); pos[1] = base[1] + Math.sin(u * 1.3) * (m.bob ?? 0.1); break;
     case 'bounce': {
-      const k = u / D; const to = m.to || [base[0] + 4, base[1], base[2]];
-      pos[0] = lerp(base[0], to[0], k); pos[2] = lerp(base[2], to[2], k);
-      const phase = Math.PI * (m.hops ?? 4) * k;
-      pos[1] = lerp(base[1], to[1], k) + Math.abs(Math.sin(phase)) * (m.height ?? 0.7);
-      sy = 1 + 0.08 * Math.cos(2 * phase); // squash & stretch
+      // A real ball: it rests until it is kicked (m.start), flies in gravity arcs that get lower with every bounce
+      // (each keeps ~55% of the height), squashes for a moment when it lands, spins as it travels, then rolls to a stop.
+      // (It used to float along |sin| arcs spread over the whole shot: a slow, weightless ball.)
+      const G = 9.8, e = Number(m.restitution ?? 0.55), t0 = 0; // m.start is already applied above (bounce is a travelling motion)
+      const to = m.to || base; const dx = to[0] - base[0], dz = to[2] - base[2]; const dist = Math.hypot(dx, dz);
+      const R = Number(m.radius ?? 0.11 * s / 0.45);
+      const n = Math.max(1, Math.round(Number(m.hops ?? 2))); const h0 = Number(m.height ?? 0.5);
+      const arcs = []; let tSum = 0; for (let i = 0; i < n; i++) { const h = h0 * e ** (2 * i); const T = 2 * Math.sqrt((2 * h) / G); arcs.push({ t: tSum, T, h }); tSum += T; }
+      const roll = Number(m.roll ?? 0.7), airFrac = dist > 0.01 ? 0.85 : 0; // most of the distance in the air, the rest rolling
+      const tt = u - t0; let y = 0, k = 0, squash = 0;
+      if (tt <= 0) k = 0;
+      else if (tt < tSum) {
+        const a = arcs.find((q) => tt >= q.t && tt < q.t + q.T) || arcs.at(-1); const lt = tt - a.t; const vy = Math.sqrt(2 * G * a.h);
+        y = Math.max(0, vy * lt - 0.5 * G * lt * lt); k = airFrac * (tt / tSum);
+        const toContact = Math.min(lt, a.T - lt); if (toContact < 0.05) squash = 1 - toContact / 0.05;
+      } else { const r = Math.min(1, (tt - tSum) / roll); k = airFrac + (1 - airFrac) * (1 - (1 - r) * (1 - r)); }
+      if (tt > 0 && tt < 0.05) squash = Math.max(squash, 1 - tt / 0.05); // the kick
+      pos[0] = base[0] + dx * k; pos[2] = base[2] + dz * k; pos[1] = base[1] + y;
+      sy = 1 - 0.16 * squash; // squash on impact (the engine keeps the width)
+      if (dist > 0.01) rot[0] += (dist * k) / R; // rolling spin (the ball faces its direction of travel, see life())
       break;
     }
     case 'twinkle': s *= 1 + (m.amount ?? 0.12) * Math.sin(u * (m.speed ?? 3) * Math.PI * 2); break;
@@ -289,12 +304,13 @@ export class SceneEngine {
     // disc; each sample counts only as far as its own blur reaches, so the sharp subject never bleeds into the blur.
     this.dof = { scene: new THREE.Scene(), mat: new THREE.ShaderMaterial({
       depthTest: false, depthWrite: false,
-      uniforms: { tColor: { value: null }, tDepth: { value: null }, near: { value: 0.1 }, far: { value: 700 }, focus: { value: 8 }, aperture: { value: 0 }, maxR: { value: 10 }, texel: { value: new THREE.Vector2(1 / width, 1 / height) } },
+      uniforms: { tColor: { value: null }, tDepth: { value: null }, near: { value: 0.1 }, far: { value: 700 }, focus: { value: 8 }, focusFar: { value: 8 }, aperture: { value: 0 }, maxR: { value: 10 }, texel: { value: new THREE.Vector2(1 / width, 1 / height) } },
       vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
       fragmentShader: `#include <packing>
-        uniform sampler2D tColor; uniform sampler2D tDepth; uniform float near; uniform float far; uniform float focus; uniform float aperture; uniform float maxR; uniform vec2 texel; varying vec2 vUv;
+        uniform sampler2D tColor; uniform sampler2D tDepth; uniform float near; uniform float far; uniform float focus; uniform float focusFar; uniform float aperture; uniform float maxR; uniform vec2 texel; varying vec2 vUv;
         float coc(vec2 uv){ float z = -perspectiveDepthToViewZ(texture2D(tDepth, uv).x, near, far);
-          float c = aperture * abs(z - focus) / max(z, 0.01);           // thin-lens blur, in units of maxR
+          float dz = z < focus ? focus - z : (z > focusFar ? z - focusFar : 0.0); // sharp across the whole band where the characters are
+          float c = aperture * dz / max(z, 0.01);                         // thin-lens blur, in units of maxR
           c *= z < focus ? 0.6 : 1.0;                                     // gentler in front of the subject
           return clamp(c, 0.0, 1.0) * maxR; }
         void main(){
@@ -522,12 +538,15 @@ export class SceneEngine {
       const vk = 20 + body.actions.length * 7;
       params.energy = 0.86 + 0.28 * rnd(vk);
       if (act.move === 'wave') params.waves = 2 + Math.floor(rnd(vk + 1) * 3);
-      if (act.seconds) { const one = Number(act.seconds) / Math.max(1, Number(act.repeats || 1)); params.seconds = one * (0.93 + 0.14 * rnd(vk + 2)); }
+      // Rides (hold) keep their exact length so the body stays in step with the equipment; short gestures vary a little.
+      if (act.seconds) { const one = Number(act.seconds) / Math.max(1, Number(act.repeats || 1)); params.seconds = act.hold || act.exact ? one : one * (0.95 + 0.1 * rnd(vk + 2)); }
       if (act.repeats) params.repeats = Number(act.repeats);
       if (act.hand) { params.hand = act.hand; params.side = act.hand; }
+      // Every other setting the move understands (jump height, crouch, nods, tugs, claps…) — these were silently dropped.
+      for (const k of Object.keys(MOVES[act.move].params || {})) if (!['seconds', 'repeats', 'hand'].includes(k) && act[k] != null) params[k] = act[k];
       const clip = buildClip(rig, act.move, params, act.move);
       const action = mixer.clipAction(clip); action.play(); action.setEffectiveWeight(0);
-      body.actions.push({ action, at: Math.max(0, Number(act.at || 0)), dur: clip.duration, move: act.move, hold: !!act.hold });
+      body.actions.push({ action, at: Math.max(0, Number(act.at || 0)), dur: clip.duration, move: act.move, hold: !!act.hold, offset: Math.max(0, Number(act.offset || 0)) });
       labels.push(act.move);
     }
     body.label = labels.join(' → ') || 'rig';
@@ -575,7 +594,7 @@ export class SceneEngine {
     a.holder.updateMatrixWorld(true);
   }
   /** A four-legged rider sits ON its seat: its paws, legs and tail base never go below the seat's top surface. */
-  _onSeat(a, seat) {
+  _onSeat(a, seat, equip) {
     const M = a.body.liveMap || {}; const top = seat.getWorldPosition(new THREE.Vector3()).y - 0.01;
     // Tail up (a happy pup), so it wags above the seat instead of lying on it. Pick the turn direction that raises the tip.
     const t0 = M.tail0, tipB = M.tail3 || M.tail2 || M.tail1;
@@ -585,22 +604,22 @@ export class SceneEngine {
       const tryAng = (ang) => { t0.quaternion.copy(q0); const pq = t0.parent.getWorldQuaternion(new THREE.Quaternion()).invert(); t0.quaternion.premultiply(new THREE.Quaternion().setFromAxisAngle(side.clone().applyQuaternion(pq).normalize(), ang)); t0.updateMatrixWorld(true); return tipB.getWorldPosition(new THREE.Vector3()).y; };
       const up = tryAng(0.9), down = tryAng(-0.9); tryAng(up >= down ? 0.9 : -0.9);
     }
-    let low = Infinity; const p = new THREE.Vector3();
-    for (const k of ['lFLwr', 'rFLwr', 'lRLwr', 'rRLwr', 'lRHock', 'rRHock', 'lRLeg', 'rRLeg', 'tail0', 'tail1', 'hips']) {
-      const b = M[k]; if (!b) continue; low = Math.min(low, b.getWorldPosition(p).y);
-      const tip = b.children.find((c) => c.isBone); if (tip && /Hock|FLwr/.test(k)) low = Math.min(low, tip.getWorldPosition(p).y);
+    // Sit exactly ON the equipment: real skin points (his chubby legs are thicker than the bones suggest) against the
+    // equipment's exact shapes. Anything sinking in lifts him; a gap lowers him; he settles a few millimetres above.
+    const sk = this._skinPts(a.body); if (!sk.length || !equip?.length) return;
+    const v = new THREE.Vector3();
+    for (let it = 0; it < 4; it++) {
+      let dmin = Infinity;
+      for (const [m, i] of sk) { m.getVertexPosition(i, v); v.applyMatrix4(m.matrixWorld); for (const eq of equip) { const r = equipSD(eq, v); if (!r.thin && r.d < dmin) dmin = r.d; } }
+      let dy = 0; if (dmin < 0.002) dy = 0.004 - dmin; else if (dmin > 0.012) dy = -(dmin - 0.005);
+      if (Math.abs(dy) < 0.0008) break;
+      a.holder.position.y += dy; a.holder.updateMatrixWorld(true);
     }
-    // A tilted seat (the seesaw): measure height above the seat's own plane, not above its centre.
-    const sp = seat.getWorldPosition(new THREE.Vector3()); const n = new THREE.Vector3(0, 1, 0).applyQuaternion(seat.getWorldQuaternion(new THREE.Quaternion()));
-    let lowPlane = Infinity;
-    for (const k of ['lFLwr', 'rFLwr', 'lRLwr', 'rRLwr', 'lRHock', 'rRHock', 'lRLeg', 'rRLeg', 'tail0', 'tail1', 'tail2', 'tail3', 'hips']) {
-      const b = M[k]; if (!b) continue; const q = b.getWorldPosition(new THREE.Vector3()); lowPlane = Math.min(lowPlane, q.sub(sp).dot(n));
-      const tip = b.children.find((c) => c.isBone); if (tip) lowPlane = Math.min(lowPlane, tip.getWorldPosition(new THREE.Vector3()).sub(sp).dot(n));
-    }
-    const pad = 0.045 * a.h0 * Number(a.actor.scale ?? 1); // paw / tail thickness
-    const need = Math.max(top - low, (-0.01 - lowPlane) / Math.max(0.5, n.y));
-    if (need <= -pad) return;
-    a.holder.position.y += need + pad; a.holder.updateMatrixWorld(true);
+  }
+  /** ~400 skin points of a rigged body (skinned with the current pose when read). */
+  _skinPts(B) {
+    return B.skinPts || (B.skinPts = (() => { const out = []; let total = 0; B.obj.traverse((m) => { if (m.isSkinnedMesh && !m.userData.mouthLayer) total += m.geometry.attributes.position.count; });
+      const stride = Math.max(1, Math.floor(total / 400)); B.obj.traverse((m) => { if (m.isSkinnedMesh && !m.userData.mouthLayer) for (let i = 0; i < m.geometry.attributes.position.count; i += stride) out.push([m, i]); }); return out; })());
   }
   _poseBody(a, u) {
     const B = a.body; const fade = (x, w) => Math.min(1, Math.max(0, x / w));
@@ -621,7 +640,7 @@ export class SceneEngine {
     let actW = 0;
     for (const x of B.actions) {
       const w = u >= x.at && u <= x.at + x.dur ? Math.min(x.at <= 0.01 ? 1 : fade(u - x.at, 0.25), x.hold ? 1 : fade(x.at + x.dur - u, 0.3)) : 0;
-      x.action.time = Math.min(x.dur, Math.max(0, u - x.at));
+      x.action.time = Math.min(x.dur, Math.max(0, u - x.at + (x.offset || 0))); // offset: start part-way into a repeating ride, in step with the lyric
       x.action.setEffectiveWeight(w * (1 - actW)); actW = Math.min(1, actW + w);
     }
     const base = 1 - actW; B.actW = actW; B.walkW = walkW;
@@ -642,8 +661,7 @@ export class SceneEngine {
       if (Math.abs(dy) > 1e-5) { B.obj.position.y = B.baseY + dy; B.obj.updateMatrixWorld(true); }
       // Skin check: no part of the body (a chubby leg, a tail, a hand during a roll) may be below the floor, even when
       // the joints are above it. ~250 real skin points, skinned with this frame's pose.
-      const sk = B.skinPts || (B.skinPts = (() => { const out = []; let total = 0; B.obj.traverse((m) => { if (m.isSkinnedMesh) total += m.geometry.attributes.position.count; });
-        const stride = Math.max(1, Math.floor(total / 250)); B.obj.traverse((m) => { if (m.isSkinnedMesh) for (let i = 0; i < m.geometry.attributes.position.count; i += stride) out.push([m, i]); }); return out; })());
+      const sk = this._skinPts(B);
       if (sk.length && par) {
         let lowSkin = Infinity; for (const [m, i] of sk) { m.getVertexPosition(i, v); v.applyMatrix4(m.matrixWorld); par.worldToLocal(v); if (v.y < lowSkin) lowSkin = v.y; }
         if (lowSkin < -0.004 * h) { B.obj.position.y += -lowSkin; B.obj.updateMatrixWorld(true); }
@@ -732,7 +750,12 @@ export class SceneEngine {
       this.renderer.setRenderTarget(this.dofRT); this.renderer.render(this.scene, this.camera);
       const U = this.dof.mat.uniforms; const H = this.dofRT.height;
       Object.assign(U.tColor, { value: this.dofRT.texture }); Object.assign(U.tDepth, { value: this.dofRT.depthTexture });
-      U.near.value = this.camera.near; U.far.value = this.camera.far; U.focus.value = this.camera.position.distanceTo(this._lookAt || new THREE.Vector3());
+      U.near.value = this.camera.near; U.far.value = this.camera.far;
+      // Focus band: from the nearest to the farthest character (and prop) of the action, plus their own depth, so
+      // EVERY character is sharp (Mango was blurred when he stood a little behind or in front of Mira).
+      const cam = this.camera.position; const fd = cam.distanceTo(this._lookAt || new THREE.Vector3()); let fn = fd, ff = fd; const wp = new THREE.Vector3();
+      for (const a of g.actors) { if (a.sky || !a.holder.visible) continue; a.holder.getWorldPosition(wp); wp.y += a.h0 * a.holder.scale.y * 0.5; const d = cam.distanceTo(wp); if (d > fd * 2.5) continue; const r = Math.max(0.25, a.w0 * a.holder.scale.x * 0.6); fn = Math.min(fn, d - r); ff = Math.max(ff, d + r); }
+      U.focus.value = Math.max(0.05, fn); U.focusFar.value = ff;
       U.aperture.value = ap; U.maxR.value = H * 0.0095; // at most ~10 px of blur at 1080p
       this.renderer.setRenderTarget(target); this.renderer.render(this.dof.scene, this.dof.camera);
     } else {
@@ -877,13 +900,15 @@ export class SceneEngine {
         if (a.blob) { const gy = g.surface(ride.pos.x, ride.pos.z); a.blob.position.set(ride.pos.x, gy + 0.03, ride.pos.z); const bs = Math.max(0.4, a.w0 * sc * 0.9); a.blob.scale.set(bs, bs * 0.8, 1); a.blob.material.opacity = 0.35; }
         if (a.body && withClips) {
           this._poseBody(a, u); if (!ride.stand) this._seatHips(g, a, ride);
-          if (g.equip?.length && a.actor.ride?.clear !== false) { // legs never go into the equipment or the floor
+          // The limb solver twisted legs into unnatural shapes (round 5 feedback): rides now rely on poses and equipment
+          // that fit each other; the solver only runs when a shot asks for it (ride.solve), and the clearance check verifies.
+          if (g.equip?.length && a.actor.ride?.solve === true && !globalThis.__noLegSolver) { // legs never go into the equipment or the floor
             const inv = new THREE.Matrix4().copy(g.group.matrixWorld).invert(); const gp = new THREE.Vector3();
             const ground = (x, z) => { gp.set(x, 0, z).applyMatrix4(inv); return g.surface(gp.x, gp.z) + g.group.matrixWorld.elements[13]; };
             a.holder.updateMatrixWorld(true);
             a.body.legLeft = clearLegs(a, g.equip, ground, (a.body.rig.quad ? 0.1 : 0.055) * a.h0 * Number(a.actor.scale ?? 1)); // limb thickness: a chubby pup's legs are thicker
-            if (a.body.rig.quad && ride.seat) this._onSeat(a, ride.seat);
           }
+          if (a.body.rig.quad && ride.seat && !ride.stand) { a.holder.updateMatrixWorld(true); this._onSeat(a, ride.seat, g.equip); } // a pup sits exactly ON his seat
         }
         return;
       }

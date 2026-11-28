@@ -387,6 +387,8 @@ The user reviewed the round 4 video and saved screenshots in `screenshots/`. Eac
 | Balloons not fully in the picture | The shot was framed on the characters; the balloon bunch was above the frame. | **The object the lyric names must be fully in frame** while it is sung about. | In progress |
 | Actions not matching the words | Actions were placed by eye, not on the words. | Time actions to the words: estimate each word's time from syllables across the sung line; jumps on each "up", nods on "yes", the seesaw at the top on "up" and the bottom on "down" (an action `offset` starts a repeating ride part-way into its cycle). | In progress |
 
+| Jump height, crouch, nod count and kite tugs ignored | The engine passed only `seconds`, `repeats` and `hand` to the moves; every other per-action setting was silently dropped. Lengths were also randomly varied ±7%, which would make a ride drift out of step with its equipment. | Pass every setting the move defines; keep exact lengths for rides (`hold`) and `exact` actions. **When a setting "does nothing", check that it reaches the code that uses it.** | Fixed |
+
 General lessons from this round:
 - **Review the finished video the way the user does:** full frames at normal size, every shot, against the lyric. Close-up checks alone missed the medium-shot mouth, the blur on Mango and the hidden wave.
 - **An automatic "fixer" can create worse problems than the one it fixes.** Always compare with and without it before keeping it.

@@ -479,15 +479,14 @@ function drawMouth(ctx, { open, wide, round, teeth }, C, size = 1) {
     ctx.strokeStyle = C.inside; ctx.lineWidth = S(0.07); ctx.stroke();
     return;
   }
-  ctx.save(); path(); ctx.fillStyle = C.inside; ctx.fill();
-  ctx.strokeStyle = C.inside; ctx.lineWidth = S(0.06); ctx.stroke(); // the same colour around the edge: rounded corners
-  path(); ctx.clip();
+  ctx.save(); path(); ctx.fillStyle = C.inside; ctx.fill(); ctx.clip(); // no dark outline: with the teeth below it, it read as a black line above the mouth
   // tongue: a soft pink mound at the bottom
   ctx.fillStyle = C.tongue; ctx.beginPath(); ctx.ellipse(X(0), Y(bot + 0.01), S(rx * 0.55), S(0.06 + 0.22 * depth), 0, 0, Math.PI * 2); ctx.fill(); // small, at the bottom: the dark inside stays readable
   // upper teeth: a soft white band just under the upper lip (only when the mouth is open enough)
-  if (teeth > 0.05 && o > 0.15) {
-    ctx.beginPath(); ctx.moveTo(X(-rx * 0.85), Y(cy - 0.02)); ctx.bezierCurveTo(X(-rx * 0.5), Y(top - 0.02), X(rx * 0.5), Y(top - 0.02), X(rx * 0.85), Y(cy - 0.02));
-    ctx.strokeStyle = '#FFFDF8'; ctx.lineCap = 'round'; ctx.lineWidth = S(2 * Math.min(0.11, 0.035 + 0.08 * teeth * o)); ctx.stroke();
+  if (teeth > 0.05 && o > 0.15) { // flush under the upper lip (nothing dark above the teeth)
+    const tw = Math.min(0.11, 0.035 + 0.08 * teeth * o);
+    ctx.beginPath(); ctx.moveTo(X(-rx), Y(cy + 0.02)); ctx.bezierCurveTo(X(-rx * 0.55), Y(top + 0.02), X(rx * 0.55), Y(top + 0.02), X(rx), Y(cy + 0.02));
+    ctx.strokeStyle = '#FFFDF8'; ctx.lineCap = 'round'; ctx.lineWidth = S(2 * tw); ctx.stroke();
   }
   ctx.restore();
 }
@@ -658,7 +657,9 @@ export function addFace(obj, head, key, seed = 1, { quad = false } = {}) {
   const tex = new THREE.CanvasTexture(canvas); tex.colorSpace = THREE.SRGBColorSpace;
   // No mipmaps: on surfaces seen edge-on (the smile groove's walls) the GPU would sample a blurred, shrunken copy that
   // mixes in the transparent border, and the skin underneath shows through as a smeared wedge.
-  tex.generateMipmaps = false; tex.minFilter = THREE.LinearFilter; tex.magFilter = THREE.LinearFilter; tex.anisotropy = 4;
+  // Mipmaps ON: in medium and wide shots the mouth is only a few pixels and without them it breaks up into jagged bits
+  // (round 5 feedback). The groove that once made mipmaps smear is flattened out of the mouth layer.
+  tex.generateMipmaps = true; tex.minFilter = THREE.LinearMipmapLinearFilter; tex.magFilter = THREE.LinearFilter; tex.anisotropy = 8;
   const mouthMesh = new THREE.Mesh(mouthPlane(m.bend), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 }));
   mouthIn.add(mouthMesh); head.add(mouthG); mouthG.visible = false;
   // Preferred: the mouth layer that lies on the face (decal), lit like the skin. Fallbacks: painting into the texture,

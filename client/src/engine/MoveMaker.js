@@ -82,6 +82,11 @@ function expandPose(pose, rig) {
     if (air) { add(`${s}Foot`, [28 * air]); add(`${s}Toe`, [-12 * air]); }
     else if ((pose.up || 0) < -0.03) add(`${s}Toe`, [-10 * Math.min(1, -(pose.up || 0) / 0.1)]); // crouching: weight on the balls of the feet
   }
+  // Natural joints (round 5 feedback: "the elbow is not moving", "the legs are robotic"): elbows never lock straight,
+  // and a standing pose keeps soft knees (a locked, straight-legged stance reads as a doll).
+  for (const s of ['l', 'r']) { const f = out[`${s}Fore`]; const bend = Math.abs(f?.[0] || 0); if (bend < 16) add(`${s}Fore`, [-(16 - bend)]); }
+  const standing = !('legs' in pose) && !pose.lThigh && !pose.rThigh && (pose.up || 0) > -0.02 && (pose.up || 0) < 0.02;
+  if (standing) for (const s of ['l', 'r']) { add(`${s}Thigh`, [-5]); add(`${s}Shin`, [10]); add(`${s}Foot`, [-5]); }
   // Wrists follow the forearms a little (a straight, stiff hand looks like a stick).
   for (const s of ['l', 'r']) { const f = out[`${s}Fore`]; if (f && !pose[`${s}Hand`]) add(`${s}Hand`, [f[0] * 0.22, 0, (f[2] || 0) * 0.3]); }
   return { rot: out, up: pose.up || 0, fwd: pose.fwd || 0, side: pose.side || 0 };
@@ -114,9 +119,9 @@ function sampleKeys(keys, u, rig) {
 /** Sitting on a seat: thighs forward, knees bent, hips lowered, hands forward on a handle. */
 const SIT = () => ({ legs: [-82, 86], up: -0.2, spine: [6], armUp: -52, arms: [-48, -12], fores: [-38] });
 /** Astride a seesaw plank: a leg each side of the plank (thighs spread), knees bent, hands on the handle in front. */
-const STRADDLE = (k = 1) => ({ legs: [-58 * k, 72 * k], lThigh: [0, 0, 36], rThigh: [0, 0, -36], up: -0.2, spine: [8], armUp: -48, arms: [-50, -10], fores: [-42] });
+const STRADDLE = (k = 1) => ({ legs: [-58 * k, 72 * k], lThigh: [0, 0, 47], rThigh: [0, 0, -47], up: -0.2, spine: [8], armUp: -48, arms: [-50, -10], fores: [-42] });
 /** At the edge of a merry-go-round, facing out: legs dangle over the rim, hands hold the edge beside the hips. */
-const EDGE = () => ({ legs: [-78, 78], up: -0.2, spine: [4], armUp: -80, arms: [12, 0], fores: [-16] });
+const EDGE = () => ({ legs: [-78, 78], up: -0.2, spine: [4], armUp: -68, arms: [12, 0], fores: [-22] });
 /** On a slide: legs straight out along the chute, leaning back a little, hands on the sides. */
 const SLIDE = () => ({ legs: [-84, 6], up: -0.2, spine: [-8], armUp: -62, arms: [-18, -20], fores: [-14] });
 
@@ -157,10 +162,11 @@ export const MOVES = {
     params: { hand: { label: 'Hand', options: ['right', 'left'], value: 'right' }, waves: { label: 'Waves', min: 1, max: 6, step: 1, value: 3 }, seconds: { label: 'Length (s)', min: 1, max: 5, step: 0.1, value: 2.4 }, repeats: { label: 'Repeat', min: 1, max: 4, step: 1, value: 1 } },
     make: ({ hand, waves, seconds }) => {
       const s = hand === 'left' ? 'l' : 'r', m = s === 'l' ? 1 : -1;
-      const up = { [`${s}ArmUp`]: 80, [`${s}Arm`]: [15], [`${s}Fore`]: [0, 0, 0], head: [0, 0, -6 * m], spine: [0, 0, -4 * m] };
+      // The hand comes up IN FRONT, beside the face, elbow bent (it used to go up and back, behind the head and ears).
+      const up = { [`${s}ArmUp`]: 72, [`${s}Arm`]: [-32], [`${s}Fore`]: [-42, 0, 0], head: [0, 0, -6 * m], spine: [0, 0, -4 * m] };
       const keys = [{ t: 0, pose: {} }, { t: 0.15, pose: up }];
       const n = Math.round(waves) * 2;
-      for (let i = 0; i < n; i++) keys.push({ t: 0.2 + (0.6 * (i + 1)) / n, pose: { ...up, [`${s}Fore`]: [0, 0, (i % 2 ? -1 : 1) * 28 * m], [`${s}Hand`]: [0, 0, (i % 2 ? -1 : 1) * 12 * m] } });
+      for (let i = 0; i < n; i++) keys.push({ t: 0.2 + (0.6 * (i + 1)) / n, pose: { ...up, [`${s}Fore`]: [-42, 0, (i % 2 ? -1 : 1) * 26 * m], [`${s}Hand`]: [0, 0, (i % 2 ? -1 : 1) * 14 * m] } });
       keys.push({ t: 0.88, pose: up }, { t: 1, pose: {} });
       return { seconds, keys };
     },
@@ -183,8 +189,8 @@ export const MOVES = {
     make: ({ height, seconds }) => ({ seconds, keys: [
       { t: 0, pose: {} },
       { t: 0.2, pose: P({ up: -0.04, legs: [-18, 32], armUp: 40, fores: [-30] }) },
-      { t: 0.45, pose: P({ up: height, armUp: 72, fores: [0, 0, 12], head: [-12], spine: [-6] }) },
-      { t: 0.7, pose: P({ up: 0, armUp: 68, fores: [0, 0, -12], head: [-10] }) },
+      { t: 0.45, pose: P({ up: height, armUp: 72, fores: [-24, 0, 12], head: [-12], spine: [-6] }) },
+      { t: 0.7, pose: P({ up: 0, armUp: 68, fores: [-30, 0, -12], head: [-10], legs: [-8, 14] }) },
       { t: 1, pose: {} },
     ] }),
   },
@@ -473,6 +479,18 @@ export const MOVES = {
       return { seconds, keys: [{ t: 0, pose: {} }, { t: 0.25, pose: down(0) }, { t: 0.35, pose: down(5) }, { t: 0.45, pose: down(-2) }, { t: 0.55, pose: down(5) }, { t: 0.65, pose: down(-2) }, { t: 0.78, pose: down(0) }, { t: 1, pose: {} }] };
     },
   },
+  holdKite: {
+    label: 'Fly a kite (hold the string)', icon: '🪁', words: ['kite', 'string'], biped: true,
+    params: { seconds: { label: 'Length (s)', min: 1, max: 30, step: 0.5, value: 6 }, tugs: { label: 'Tugs', min: 0, max: 12, step: 1, value: 4 }, repeats: { label: 'Repeat', min: 1, max: 1, step: 1, value: 1 } },
+    make: ({ seconds, tugs }) => {
+      // Right hand up and forward holding the string, left hand relaxed, head up watching the kite; little tugs.
+      const hold = (k) => ({ rArmUp: 58 + 6 * k, rArm: [-48 + 6 * k], rFore: [-34 - 10 * k], head: [-20, 0, 4], spine: [-5], lArmUp: -58, lFore: [-24] });
+      const keys = [{ t: 0, pose: {} }, { t: 0.08, pose: hold(0) }]; const n = Math.max(0, Math.round(tugs));
+      for (let i = 0; i < n; i++) { const a = 0.12 + (0.84 * (i + 0.5)) / Math.max(1, n); keys.push({ t: a, pose: hold(1) }, { t: Math.min(0.97, a + 0.42 / Math.max(1, n)), pose: hold(0) }); }
+      keys.push({ t: 1, pose: hold(0) });
+      return { seconds, keys };
+    },
+  },
   // ---------------- riding playground equipment (held for the whole ride; the engine puts the hips on the seat) ----------------
   sit: {
     label: 'Sit', icon: '🪑', group: 'Playground', words: ['sit', 'seat'], biped: true,
@@ -496,7 +514,7 @@ export const MOVES = {
     make: ({ seconds }) => {
       // Hands up on the chains. Going back: legs tuck, lean forward. Going forward: legs stretch out, lean back.
       const hold = { armUp: 62, arms: [-22, 0], fores: [-62] }; // hands up on the chains, at the sides
-      const back = { ...SIT(), ...hold, legs: [-70, 118], spine: [12], head: [4] };
+      const back = { ...SIT(), ...hold, legs: [-74, 98], spine: [12], head: [4] }; // tuck: shins go under the seat, below its board
       const front = { ...SIT(), ...hold, legs: [-95, 15], spine: [-14], head: [-12] };
       const mid = { ...SIT(), ...hold };
       return { seconds, keys: [{ t: 0, pose: mid }, { t: 0.25, pose: back }, { t: 0.5, pose: mid }, { t: 0.75, pose: front }, { t: 1, pose: mid }] };

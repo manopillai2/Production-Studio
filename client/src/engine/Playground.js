@@ -71,8 +71,10 @@ function swing(p) {
   [[-0.62, PAL.orange, 'a'], [0.62, PAL.pink, 'b']].forEach(([x, c, name], i) => {
     const pivot = new THREE.Group(); pivot.position.set(x, H, 0); g.add(pivot);
     for (const sx of [-0.22, 0.22]) pivot.add(tube([sx, 0, 0], [sx, -CH, 0], 0.018, '#C9C2D6'));
-    const seat = box(0.56, 0.07, 0.32, c, 0.03); seat.position.y = -CH; pivot.add(seat);
-    seats[name] = seatPoint(name, pivot, [0, -CH + 0.06, 0], 0);
+    // A shallow seat (as deep as a small child's thigh) with the child sitting at its back: knees at the front edge,
+    // shins hanging free in front of it (a deep seat put the shins through the board).
+    const seat = box(0.56, 0.07, 0.19, c, 0.03); seat.position.y = -CH; pivot.add(seat);
+    seats[name] = seatPoint(name, pivot, [0, -CH + 0.06, -0.07], 0);
     swings.push({ pivot, phase: i * 0.5 + (p.phase || 0), amp: THREE.MathUtils.degToRad((p.amplitude ?? 32) * (i ? 0.85 : 1)) });
   });
   const P = p.period ?? 2.6; // a 1.65 m swing really swings about every 2.6 s
