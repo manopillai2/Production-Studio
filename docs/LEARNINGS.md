@@ -427,6 +427,18 @@ General lessons from this round:
 | Swing legs still wrong in a later swing shot | The slow-chorus swing had its own, slower settings that the earlier fix didn't cover. | **After a fix, re-check EVERY shot of that kind, not just the ones in the screenshots.** | In progress |
 | (From the Project 07 session) the mouth cover picked up T-shirt colour | The skin-sampling ring around the mouth reached the clothes on a small character. | Sample only beside and above the mouth, near the face's own skin colour (fixed in FaceRig by the Project 07 session). | Re-check Mira's close-ups |
 
+### Project 07 round 1 (indoor home): staging, faces, rooms
+| What we saw | Cause (measured) | Lesson / fix | Status |
+|---|---|---|---|
+| Leo had his back to the camera at the TV, fan and fridge | The objects stood against the BACK wall or flat on a side wall, so a child FACING them faced away from the camera. | **Staging rule for rooms:** things you sit or lie on (sofa, bed) go on the back wall and face the camera. Things you look at (TV, fan) stand near the FRONT of a side wall, angled toward the camera, with the characters DEEPER in the room turned three-quarters toward them. A fridge goes in a back corner with the characters beside it in profile; hinge it on the side away from them. | Restaged; checking |
+| A yellow-green "moustache" around Leo's singing mouth | The mouth-cover skin colour was sampled in a ring reaching 7 cm below the mouth. On a toddler with a short chin, that hit his yellow T-shirt (cover = 250,213,91). Found by reading the cover canvas's pixels in the running app. | Sample only beside and above the mouth, near the face's own skin colour (`FaceRig.js`). **Read the actual drawn colour before guessing at shaders.** | Fixed; seen in close-ups |
+| An olive patch on Mommy's singing face | The median skin near the carved smile includes Meshy's baked shadow, so the cover was darker and duller than her lit cheeks. A magenta test cover rendered bright, which proved the shading was fine and the colour was wrong. | Sample beyond the groove (1.15–1.65 mouth widths) and use the brighter half (50th–85th percentile). | Better; a slight tint remains in extreme close-ups in shade |
+| The outdoor landscape seen above the room walls; tiny characters | `wide` and `crane` shots lift the camera above the 3.1 m walls of an open-top room. | Indoors, use `full` with `distance` for wide views, at child's eye level. No cranes over the walls. | Fixed in the direction |
+| The camera needed to know about a TV that isn't an actor | Framing only measures actors; equipment is invisible to it. | `camera.include: [[x,y,z]…]` adds points the frame must hold: the object the lyric names. | Built |
+| Wall decorations seen from behind | A room's walls are one-sided (invisible from outside), but a door or shelf on them is not. | The room hides a wall's decorations when the camera is outside that wall (`onCamera` hook, called every frame). | Built |
+| `headTilt` silently skipped on a human | It's a four-legged move; the engine warns in the render log. | Read the render warnings; use `nod` or `look` on two-legged characters. | Fixed |
+| A peek close-up crashed | `face: i` counts ALL actors in the shot, including props (the sofa was actor 0). | Count props when indexing actors (`look_at`, `turn_to`, `target`, `hold.actor`, peek `face`). | Noted |
+
 ## 14. Known limitations and ideas for later
 
 - Faces: no expressions on cue (blinks and singing mouths only). Lip-sync is spelling-based (no phoneme dictionary). Faint traces of the carved smile can show at the mouth corners. Four-legged characters (Mango) keep their painted mouth (his rig has a jaw bone that could be used).
