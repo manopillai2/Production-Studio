@@ -21,8 +21,8 @@ Last updated: 2026-11-27, during Stage 2 (assets) and Stage 3 (song timing).
 - [x] Song uploaded as master (audio id 211), timing approved, singers set (Mommy card 68, Leo 69). **Stage 3 done.**
 
 ## In progress / next (in order)
-5. [ ] New moves in `MoveMaker.js`: point, present, kneel, sitRelax, lie, sip, shiver, pat, hug.
-6. [ ] `npx vite build` in `client/`, then test renders of each room with `tools/testing/peek.mjs` / `shots.mjs`.
-7. [ ] Direction: `docs/project-07/direction.mjs` (shots, cameras, word-timed actions).
+5. [x] New moves in `MoveMaker.js`: point, present, kneel, sitRelax, lie, holdCup, sip, shiver, pat, hug, tuck, sway, plus `BASES` and `act.base` (a gesture on a kneel/sit/lie posture). Engine: fridge `hinge`, `camera.include` points, room `onCamera` (hides wall decor seen from behind).
+6. [ ] **WAIT for the Project 06 session's "export done" message** before `npx vite build` or a server restart. Then `npx vite build` in `client/`, then test renders of each room with `tools/testing/peek.mjs` / `shots.mjs`.
+7. [x] Direction written: `docs/project-07/direction.mjs`, 32 shots covering 0–164.64 s, word-timed. Re-apply with `node docs/project-07/direction.mjs` (`--dry` lists the shots).
 8. [ ] QA: `clearance.mjs 18`, contact sheets, face close-ups and medium shots, blinks. Fix and re-render.
 9. [ ] Export at 1080p, check, then 4K. Update the logs and LEARNINGS, commit.

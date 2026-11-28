@@ -51,3 +51,26 @@ All 7 assets checked on the Meshy thumbnails (contact sheet), approved and saved
 - Tempo: **89.1 bpm** (beat 0.673 s, first beat 0.455 s), from the audio's onset envelope (`music/beats.py`).
 - Singers: Mommy on "This is a…" lines plus "together" lines; Leo on the chorus lines and "Oh, a…!" lines plus "together" lines. Voices were not separated by ear: the singer roles follow the user's lyric labels.
 - Song uploaded as master (audio 211), line timing set and approved.
+
+## Stage 4: direction (written, not yet rendered)
+- **Staging rule found while planning:** an object against the BACK wall makes a child who faces it turn their back to the camera. So the sofa and bed (used facing the camera) are on the back wall, and the TV, fan and fridge are on the side walls, faced in profile and filmed from the front at an angle. The fridge is hinged at the back, so its door swings away from the camera.
+- **New engine pieces:**
+  - `Home.js`: room builder, TV, fan, fridge, cup, nightstand, seats, blanket.
+  - Moves: point, present, kneel, sitRelax, lie, holdCup, sip, shiver, pat, hug, tuck, sway, with base postures (`act.base`).
+  - `_holdProps`: the cup in the palm, tilting toward the mouth.
+  - `camera.include`: the named object must be in frame.
+  - The room hides a wall's decorations when the camera is outside that wall.
+- **The pattern for every object** (the same every time, so toddlers can predict it):
+  1. Mommy's open-hand "present" as she sings "This is a…", and the object wakes up: the TV switches on, the fan spins up, the fridge door opens;
+  2. a surprised hop on "Oh";
+  3. a point (or pat, or show) on every repeated name;
+  4. the "together" line acted out: sit, sing, sleep, spin, shiver, sip.
+- **The shots, 32 in total, contiguous from 0 to 164.64 s:**
+  - opening;
+  - sofa ×3, TV ×3 (living room, morning);
+  - bed ×3, fan ×3 (bedroom, warm evening);
+  - the 22 s instrumental: walk out, kitchen crane, Leo looks up at the fridge;
+  - fridge ×3, cup ×3 (kitchen, midday);
+  - hug, a recap of all six objects (three shots), dance, hooray;
+  - a sofa goodbye and a crane-out end card.
+- The Project 06 session shares the server and `client/dist`. The build and render wait for its export to finish.

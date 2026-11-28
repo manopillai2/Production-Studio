@@ -547,7 +547,7 @@ export class SceneEngine {
       if (act.repeats) params.repeats = Number(act.repeats);
       if (act.hand) { params.hand = act.hand; params.side = act.hand; }
       // Every other setting the move understands (jump height, crouch, nods, tugs, claps…) — these were silently dropped.
-      for (const k of Object.keys(MOVES[act.move].params || {})) if (!['seconds', 'repeats', 'hand'].includes(k) && act[k] != null) params[k] = act[k];
+      for (const k of Object.keys(MOVES[act.move].params || {})) if (!['seconds', 'repeats', 'hand'].includes(k) && act[k] != null) params[k] = act[k]; if (act.base) params.base = act.base; // a gesture on a posture (kneel / sit / lie), Project 07
       const clip = buildClip(rig, act.move, params, act.move);
       const action = mixer.clipAction(clip); action.play(); action.setEffectiveWeight(0);
       body.actions.push({ action, at: Math.max(0, Number(act.at || 0)), dur: clip.duration, move: act.move, hold: !!act.hold, offset: Math.max(0, Number(act.offset || 0)) });
@@ -747,6 +747,7 @@ export class SceneEngine {
     this._alive(g, t);
     this._camera(g, u, D, g.camAdjust);
     this._skyInFrame(g);
+    for (const eq of g.equip || []) eq.onCamera?.(this.camera); // rooms hide wall decorations seen from behind (Project 07)
     this._light(g);
     g.land?.update(t);
     const ap = this._aperture(g);
@@ -1063,6 +1064,12 @@ export class SceneEngine {
     };
     const standing = g.actors.filter((a) => !a.sky);
     g.frame = box(standing.length ? standing : g.actors) || { cx: 0, cz: 0, gy: g.focusY || 0, H: 1.5, halfW: 3, depth: 0 };
+    // camera.include: points (setting space) the frame must ALSO hold, e.g. the TV or fridge the lyric names (Project 07:
+    // "the named object fully in frame"). Equipment isn't an actor, so the frame doesn't know about it otherwise.
+    const inc = g.shot.camera?.include;
+    if (Array.isArray(inc) && inc.length && g.frame) { const f = g.frame; if (f.x0 == null) Object.assign(f, { x0: f.cx - f.halfW, x1: f.cx + f.halfW, z0: f.cz, z1: f.cz });
+      for (const [x, y = 0, z] of inc) { f.x0 = Math.min(f.x0, x); f.x1 = Math.max(f.x1, x); f.z0 = Math.min(f.z0, z); f.z1 = Math.max(f.z1, z); f.H = Math.max(f.H, y - f.gy + 0.1); }
+      f.cx = (f.x0 + f.x1) / 2; f.cz = (f.z0 + f.z1) / 2 + 0.15 * (f.z1 - f.z0); f.halfW = (f.x1 - f.x0) / 2; f.depth = f.z1 - f.z0; }
     g.frameOf = g.actors.map((a) => box([a]));
   }
 

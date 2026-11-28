@@ -73,7 +73,7 @@ const art = (kind) => canvasTex(`art|${kind}`, 256, 256, (g, w, h) => {
 // One architecture for the whole home: honey wood floor, white skirting and dado rail, a white-framed window with
 // curtains, a soft ceiling. Each room has its own calm wall colour; the six objects bring the strong colour.
 const ROOMS = {
-  living: { wall: '#FFD9C4', accent: '#FFE6D8', pattern: 'stripes', dado: '#FFF8F0', curtain: '#FF8FA3', floor: 'wood', rug: ['#FFD23F', '#FFE27A', '#FFB84D'], rugAt: [0.2, 0.2], rugR: 1.7, art: ['sun', 'house'], windowX: -1.4, door: { side: 'right', z: 0.6, color: '#7FD6B8' }, shelf: { side: 'left', z: -0.6 } },
+  living: { wall: '#FFD9C4', accent: '#FFE6D8', pattern: 'stripes', dado: '#FFF8F0', curtain: '#FF8FA3', floor: 'wood', rug: ['#FFD23F', '#FFE27A', '#FFB84D'], rugAt: [0.4, -0.9], rugR: 1.6, art: ['sun', 'house'], windowX: -0.6, door: { side: 'left', z: -1.8, color: '#7FD6B8' }, shelf: { side: 'left', z: -0.6 } },
   bedroom: { wall: '#FFE0EC', accent: '#FFFFFF', pattern: 'stars', dado: '#FFF8F0', curtain: '#9C8BFF', floor: 'wood', rug: ['#8CCBFF', '#B9E0FF', '#FFFFFF'], rugAt: [0.4, 0.1], rugR: 1.5, art: ['moon', 'rainbow'], windowX: 0.6, door: { side: 'left', z: 0.8, color: '#FFB84D' }, shelf: { side: 'right', z: 0.2 } },
   kitchen: { wall: '#FFF1B8', accent: '#FFF6CF', pattern: 'dots', dado: null, curtain: '#7FD6B8', floor: 'checker', rug: null, art: ['apple', 'heart'], windowX: -1.3, counter: true, door: { side: 'left', z: 1.0, color: '#FF8FA3' } },
 };
@@ -143,14 +143,18 @@ function room(p) {
   const lamp = at(mesh(new THREE.SphereGeometry(0.26, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2), mat('#FFFFFF', { emissive: '#FFE9B8', emissiveIntensity: 0.6 })), 0, H - 0.005, -0.4); lamp.rotation.x = Math.PI; g.add(noCast(lamp));
   // wall pictures, a shelf, a door
   const artX = R.windowX < 0 ? [1.2, 2.5] : [-2.4, -1.1];
-  if (p.style === 'living') { artX[0] = 2.45; artX[1] = null; } // the TV sits under the right side of the back wall: one picture above it
+  if (p.style === 'living') { artX[0] = 1.5; artX[1] = 2.7; } // the sofa sits under the window; pictures on the right of the back wall
   R.art.forEach((k, i) => { if (artX[i] == null) return; const f = frame(k, 0.62, 0.62, [C.blue, C.coral][i]); f.position.set(artX[i], p.style === 'living' ? 2.15 : 1.75, 0.03); wallG.back.add(f); });
   if (R.shelf) { const s = bookshelf(C.white); s.position.set(R.shelf.z, 1.45, 0.14); wallG[R.shelf.side].add(s); }
   if (R.door) { const d = door(R.door.color); d.position.set(R.door.side === 'right' ? -R.door.z : R.door.z, 0, 0.03); wallG[R.door.side].add(d); }
   if (R.rug) { const rug = new THREE.Mesh(new THREE.CircleGeometry(p.rug_r ?? R.rugR, 64), new THREE.MeshStandardMaterial({ map: rugTex(...R.rug), roughness: 0.95 })); rug.rotation.x = -Math.PI / 2; const ra = p.rug_at || R.rugAt; rug.position.set(ra[0], 0.012, ra[1]); rug.receiveShadow = true; g.add(noCast(rug)); }
+  // A wall's decorations (door, shelf, frames, window) would show their BACKS if the camera stood outside that wall
+  // (the wall itself is invisible from outside). Hide them whenever the camera is on the outside of their wall.
+  const wallList = Object.values(wallG); const cl = new THREE.Vector3();
+  const onCamera = (cam) => { for (const wg of wallList) { wg.updateMatrixWorld(); cl.copy(cam.position); wg.worldToLocal(cl); const inside = cl.z > 0.02; wg.children.forEach((c, i) => { if (i > 0) c.visible = inside; }); } };
   noCollide(g); // the room itself is not an obstacle: the floor, walls and rug are what characters stand by and on
   if (R.counter) g.add(kitchenCounter(W, D, win)); // the worktop and cabinets ARE solid
-  return { group: g, seats: {}, height: 0, pose() {} };
+  return { group: g, seats: {}, height: 0, pose() {}, onCamera, size: { w: W, d: D, h: H } };
 }
 
 /** Kitchen run along the back wall: mint cabinets with round knobs, a honey-wood worktop at adult height (0.9 m),
@@ -266,16 +270,19 @@ function fridge(p) {
   food.add(at(cyl(0.11, 0.1, 0.08, '#FFE6F0', 20), 0.2, 0.88 + 0.05, 0)); food.add(at(ball(0.035, C.red), 0.17, 0.88 + 0.1, 0.02)); food.add(at(ball(0.035, C.red), 0.23, 0.88 + 0.1, -0.02)); // a bowl of strawberries
   const light = new THREE.PointLight('#CDEBFF', 0, 2.2, 1.5); light.position.set(0, split - 0.1, 0.1); shell.add(light);
   // doors: hinge on the right edge (x = +W/2, z = +Dp/2)
-  const mkDoor = (h, y0, magnets) => { const pivot = new THREE.Group(); pivot.position.set(W / 2, y0, Dp / 2); shell.add(pivot);
-    const d = at(box(W, h, 0.07, sm, 0.05), -W / 2, h / 2, 0.035); pivot.add(d);
-    const handle = at(box(0.05, Math.min(0.4, h * 0.45), 0.05, C.chrome, 0.02, { metalness: 0.55, roughness: 0.2 }), -W + 0.08, h / 2, 0.1); pivot.add(handle);
+  // hinge: 'right' (default) or 'left' edge of the door as you face the fridge. Choose the side AWAY from the camera, so
+  // the open door swings out of the way and the cool inside shows.
+  const hs = p.hinge === 'left' ? -1 : 1;
+  const mkDoor = (h, y0, magnets) => { const pivot = new THREE.Group(); pivot.position.set(hs * W / 2, y0, Dp / 2); shell.add(pivot);
+    const d = at(box(W, h, 0.07, sm, 0.05), -hs * W / 2, h / 2, 0.035); pivot.add(d);
+    const handle = at(box(0.05, Math.min(0.4, h * 0.45), 0.05, C.chrome, 0.02, { metalness: 0.55, roughness: 0.2 }), -hs * (W - 0.08), h / 2, 0.1); pivot.add(handle);
     if (magnets) { const shapes = [[C.red, 'heart', -0.55, 0.85], [C.yellow, 'star', -0.3, 0.6], [C.green, 'ball', -0.5, 0.35], [C.pink, 'ball', -0.22, 0.95]];
       for (const [c, s, x, yy] of shapes) { const m = s === 'star' ? (() => { const sh = new THREE.Shape(); for (let i = 0; i < 10; i++) { const a = Math.PI / 2 + (i * Math.PI) / 5; const r = i % 2 ? 0.025 : 0.055; sh.lineTo(Math.cos(a) * r, Math.sin(a) * r); } return mesh(new THREE.ExtrudeGeometry(sh, { depth: 0.015, bevelEnabled: true, bevelSize: 0.006, bevelThickness: 0.006, bevelSegments: 2 }), c); })()
         : s === 'heart' ? (() => { const sh = new THREE.Shape(); sh.moveTo(0, -0.05); sh.bezierCurveTo(-0.07, 0, -0.045, 0.05, 0, 0.025); sh.bezierCurveTo(0.045, 0.05, 0.07, 0, 0, -0.05); return mesh(new THREE.ExtrudeGeometry(sh, { depth: 0.015, bevelEnabled: true, bevelSize: 0.006, bevelThickness: 0.006, bevelSegments: 2 }), c); })()
         : (() => { const b2 = ball(0.04, c); b2.scale.z = 0.4; return b2; })();
-        m.position.set(x, yy * h, 0.075); pivot.add(m); } }
+        m.position.set(hs * x, yy * h, 0.075); pivot.add(m); } }
     // inside of the door: a white liner with a little shelf (seen when open)
-    pivot.add(at(box(W - 0.12, h - 0.12, 0.012, liner, 0.01), -W / 2, h / 2, -0.004)); pivot.add(at(box(W - 0.16, 0.04, 0.08, '#FFFFFF', 0.01), -W / 2, h * 0.45, -0.05));
+    pivot.add(at(box(W - 0.12, h - 0.12, 0.012, liner, 0.01), -hs * W / 2, h / 2, -0.004)); pivot.add(at(box(W - 0.16, 0.04, 0.08, '#FFFFFF', 0.01), -hs * W / 2, h * 0.45, -0.05));
     return pivot; };
   const main = mkDoor(split - 0.02, 0.06, true); mkDoor(H - split - 0.03, split + 0.09, false);
   // cold puffs: soft white mist that rolls out of the open door
@@ -287,7 +294,7 @@ function fridge(p) {
     pose(u) {
       let k = 0;
       if (op) { const a = Number(op.at ?? 0), d = Number(op.dur ?? 0.9); k = ease((u - a) / d); if (op.close != null) k *= 1 - ease((u - Number(op.close)) / d); }
-      main.rotation.y = THREE.MathUtils.degToRad(105) * k; // swings out to the right
+      main.rotation.y = hs * THREE.MathUtils.degToRad(105) * k; // swings out on the hinge side
       light.intensity = 2.2 * k; glow.material.emissiveIntensity = 0.9 * k;
       puffs.forEach((m2, i) => { const ph = ((u * 0.35 + i / puffs.length) % 1); const sp = 0.25 + 0.75 * ph; m2.position.set(-0.25 + (i % 3) * 0.22 + 0.06 * Math.sin(u + i), 0.4 + (i % 4) * 0.22 - ph * 0.25, Dp / 2 + ph * 0.5); m2.scale.setScalar(sp * (0.8 + 0.3 * (i % 2))); m2.material.opacity = 0.42 * k * Math.sin(Math.PI * ph); });
     },

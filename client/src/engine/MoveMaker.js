@@ -125,6 +125,14 @@ const EDGE = () => ({ legs: [-78, 78], up: -0.2, spine: [4], armUp: -68, arms: [
 /** On a slide: legs straight out along the chute, leaning back a little, hands on the sides. */
 const SLIDE = () => ({ legs: [-84, 6], up: -0.2, spine: [-8], armUp: -62, arms: [-18, -20], fores: [-14] });
 
+/** Base postures (Project 07): any gesture can be performed ON one of these (act.base), e.g. Mommy presents while
+ *  kneeling, or the child points while sitting. Lower body + trunk only, so the gesture's arms stay its own. */
+export const BASES = {
+  kneel: { up: -0.2, lThigh: [-88, 0, 4], lShin: [92], rThigh: [8, 0, -3], rShin: [100], spine: [8] }, // left knee up, right knee on the floor
+  sit: { legs: [-84, 84], up: -0.2, spine: [-4] },             // on a sofa, feet on the floor (an adult)
+  sitShort: { legs: [-86, 28], up: -0.2, spine: [-6] },        // a toddler on a sofa: short legs stick out over the edge
+  lie: { legs: [-4, 8], spine: [-2], head: [14], neck: [4] },  // on the back (the seat is turned flat); the pillow lifts the head
+};
 /** Wide, low martial-arts stance with fists up (k scales how deep). */
 const ninjaStance = (k = 1) => ({ up: -0.06 * k, lThigh: [-18 * k, 0, 14], rThigh: [-18 * k, 0, -14], lShin: [34 * k], rShin: [34 * k], spine: [8 * k], head: [-6],
   arms: [-50, -12], fores: [-95, -10] });
@@ -491,6 +499,125 @@ export const MOVES = {
       return { seconds, keys };
     },
   },
+  // ---------------- Project 07: a home (Mommy teaches; the child points, sips, shivers, sleeps) ----------------
+  point: {
+    label: 'Point at it', icon: '👉', words: ['point', 'this', 'that', 'look'], biped: true,
+    params: { hand: { label: 'Hand', options: ['right', 'left'], value: 'right' }, points: { label: 'Points', min: 1, max: 4, step: 1, value: 2 }, height: { label: 'Aim', options: ['low', 'level', 'high'], value: 'level' }, seconds: { label: 'Length (s)', min: 0.8, max: 5, step: 0.1, value: 2 }, repeats: { label: 'Repeat', min: 1, max: 3, step: 1, value: 1 } },
+    make: ({ hand, points, height, seconds }) => {
+      const s = hand === 'left' ? 'l' : 'r', m = s === 'l' ? 1 : -1; const up = { low: -22, level: 8, high: 34 }[height] ?? 8;
+      // arm out in front, elbow almost straight (never locked), leaning toward the thing; each "point" is a little jab forward
+      const aim = (k) => ({ [`${s}ArmUp`]: up + 4 * k, [`${s}Arm`]: [-66 - 6 * k], [`${s}Fore`]: [-20 + 6 * k], [`${s}Hand`]: [-6, 0, 0], spine: [5 + 4 * k, 6 * m], head: [up < 0 ? 10 : up > 20 ? -10 : 2, 4 * m], fwd: 0.012 * k });
+      const keys = [{ t: 0, pose: {} }, { t: 0.18, pose: aim(0) }]; const n = Math.max(1, Math.round(points));
+      for (let i = 0; i < n; i++) { const a = 0.22 + (0.6 * i) / n, b = 0.22 + (0.6 * (i + 1)) / n; keys.push({ t: (a + b) / 2, pose: aim(1) }, { t: b, pose: aim(0) }); }
+      keys.push({ t: 1, pose: {} });
+      return { seconds, keys };
+    },
+  },
+  present: {
+    label: 'Present it (open hand: "this is a…")', icon: '🫴', words: ['this is', 'present', 'show', 'here is'], biped: true,
+    params: { hand: { label: 'Hand', options: ['right', 'left'], value: 'right' }, seconds: { label: 'Length (s)', min: 1, max: 8, step: 0.1, value: 3 }, repeats: { label: 'Repeat', min: 1, max: 2, step: 1, value: 1 } },
+    make: ({ hand, seconds }) => {
+      const s = hand === 'left' ? 'l' : 'r', m = s === 'l' ? 1 : -1, o = s === 'l' ? 'r' : 'l';
+      // an open hand sweeping out toward the object, palm up, head turned to it, a warm little tilt; the other hand relaxed
+      const open = (k) => ({ [`${s}ArmUp`]: -8 + 6 * k, [`${s}Arm`]: [-44 - 6 * k], [`${s}Fore`]: [-30 + 6 * k], [`${s}Hand`]: [-10, 0, 18 * m], [`${o}ArmUp`]: -70, [`${o}Fore`]: [-26], spine: [4, 8 * m, -3 * m], head: [5, 22 * m, 6 * m] });
+      return { seconds, keys: [{ t: 0, pose: {} }, { t: 0.22, pose: open(0) }, { t: 0.5, pose: open(1) }, { t: 0.8, pose: open(0.4) }, { t: 1, pose: {} }] };
+    },
+  },
+  kneel: {
+    label: 'Kneel down (to a child\'s height)', icon: '🧎', words: ['kneel'], biped: true,
+    params: { down: { label: 'Going down (s)', min: 0.6, max: 2, step: 0.1, value: 1.1 }, rise: { label: 'Stand up at the end', options: ['no', 'yes'], value: 'no' }, seconds: { label: 'Length (s)', min: 1, max: 30, step: 0.5, value: 4 }, repeats: { label: 'Repeat', min: 1, max: 1, step: 1, value: 1 } },
+    make: ({ down, rise, seconds }) => {
+      const k = { ...BASES.kneel, arms: [-20, 0], armUp: -66, fores: [-34] }; const d = Math.min(0.45, down / seconds);
+      const mid = { up: -0.1, lThigh: [-50, 0, 4], lShin: [60], rThigh: [-14, 0, -3], rShin: [62], spine: [16], armUp: -60, fores: [-30] }; // a soft crouch on the way
+      return { seconds, keys: [{ t: 0, pose: {} }, { t: d * 0.5, pose: mid }, { t: d, pose: k }, ...(rise === 'yes' ? [{ t: Math.max(d + 0.05, 1 - d), pose: k }, { t: 1, pose: {} }] : [{ t: 1, pose: k }])] };
+    },
+  },
+  sitRelax: {
+    label: 'Sit back (hands in the lap)', icon: '🛋️', group: 'Home', words: ['sit', 'sofa', 'couch'], biped: true,
+    params: { short: { label: 'Short legs (toddler)', options: ['no', 'yes'], value: 'no' }, seconds: { label: 'Length (s)', min: 1, max: 30, step: 0.5, value: 6 }, repeats: { label: 'Repeat', min: 1, max: 1, step: 1, value: 1 } },
+    make: ({ short, seconds }) => { const p = { ...(short === 'yes' ? BASES.sitShort : BASES.sit), armUp: -62, arms: [-30, -8], fores: [-52], head: [4] }; return { seconds, keys: [{ t: 0, pose: p }, { t: 1, pose: p }] }; },
+  },
+  lie: {
+    label: 'Lie down to sleep', icon: '😴', group: 'Home', words: ['sleep', 'bed', 'rest'], biped: true,
+    params: { seconds: { label: 'Length (s)', min: 1, max: 30, step: 0.5, value: 6 }, repeats: { label: 'Repeat', min: 1, max: 1, step: 1, value: 1 } },
+    make: ({ seconds }) => { const p = { ...BASES.lie, armUp: -78, arms: [-6], fores: [-26] }; return { seconds, keys: [{ t: 0, pose: p }, { t: 1, pose: p }] }; },
+  },
+  holdCup: {
+    label: 'Hold a cup in front', icon: '🥛', group: 'Home', words: ['cup', 'hold'], biped: true,
+    params: { hand: { label: 'Hand', options: ['right', 'left'], value: 'right' }, seconds: { label: 'Length (s)', min: 1, max: 20, step: 0.5, value: 3 }, lift: { label: 'Lift it up to show', options: ['no', 'yes'], value: 'no' }, repeats: { label: 'Repeat', min: 1, max: 4, step: 1, value: 1 } },
+    make: ({ hand, seconds, lift }) => {
+      const s = hand === 'left' ? 'l' : 'r', m = s === 'l' ? 1 : -1;
+      const hold = { [`${s}ArmUp`]: -48, [`${s}Arm`]: [-46, 0, 0], [`${s}Fore`]: [-78, 0, 0], [`${s}Hand`]: [0, 0, -8 * m], head: [12, 6 * m] }; // cup at the chest, looking at it
+      const show = { ...hold, [`${s}ArmUp`]: -10, [`${s}Arm`]: [-70], [`${s}Fore`]: [-50], head: [-4, 4 * m], up: 0.01 };
+      return { seconds, keys: lift === 'yes' ? [{ t: 0, pose: hold }, { t: 0.35, pose: show }, { t: 0.65, pose: show }, { t: 1, pose: hold }] : [{ t: 0, pose: hold }, { t: 1, pose: hold }] };
+    },
+  },
+  sip: {
+    label: 'Sip from the cup', icon: '🥤', group: 'Home', words: ['sip', 'drink'], biped: true,
+    params: { hand: { label: 'Hand', options: ['right', 'left'], value: 'right' }, sips: { label: 'Sips', min: 1, max: 6, step: 1, value: 1 }, seconds: { label: 'Length (s)', min: 0.6, max: 12, step: 0.1, value: 1.4 }, repeats: { label: 'Repeat', min: 1, max: 6, step: 1, value: 1 } },
+    make: ({ hand, sips, seconds }) => {
+      const s = hand === 'left' ? 'l' : 'r', m = s === 'l' ? 1 : -1;
+      const hold = { [`${s}ArmUp`]: -48, [`${s}Arm`]: [-46], [`${s}Fore`]: [-78], [`${s}Hand`]: [0, 0, -8 * m], head: [12, 6 * m] };
+      const drink = { [`${s}ArmUp`]: -26, [`${s}Arm`]: [-58, 0, 0], [`${s}Fore`]: [-118, 0, 0], [`${s}Hand`]: [-12, 0, -10 * m], head: [-10, 0, 0], spine: [-3] }; // cup at the lips, head back a little
+      const keys = [{ t: 0, pose: hold }]; const n = Math.max(1, Math.round(sips));
+      for (let i = 0; i < n; i++) { const a = i / n, b = (i + 1) / n; keys.push({ t: a + (b - a) * 0.35, pose: drink }, { t: a + (b - a) * 0.6, pose: drink }, { t: b, pose: hold }); }
+      return { seconds, keys };
+    },
+  },
+  shiver: {
+    label: 'Shiver (brr, cold!)', icon: '🥶', group: 'Home', words: ['cold', 'brr', 'shiver', 'freezing'], biped: true,
+    params: { seconds: { label: 'Length (s)', min: 1, max: 6, step: 0.1, value: 2.4 }, shakes: { label: 'Shakes', min: 2, max: 16, step: 1, value: 8 }, repeats: { label: 'Repeat', min: 1, max: 3, step: 1, value: 1 } },
+    make: ({ seconds, shakes }) => {
+      // hugging himself, shoulders up, a quick little shake side to side (not frantic), then a happy release
+      const hug = (k) => ({ arms: [-64, -62], fores: [-96, -30], armUp: -30, spine: [10, 0, 3 * k], head: [8, 0, -4 * k], up: -0.025, legs: [-10, 18] });
+      const keys = [{ t: 0, pose: {} }, { t: 0.12, pose: hug(0) }]; const n = Math.max(2, Math.round(shakes));
+      for (let i = 0; i < n; i++) keys.push({ t: 0.14 + (0.72 * (i + 1)) / n, pose: hug(i % 2 ? 1 : -1) });
+      keys.push({ t: 0.9, pose: hug(0) }, { t: 1, pose: {} });
+      return { seconds, keys };
+    },
+  },
+  pat: {
+    label: 'Pat it (hand down on the bed / sofa)', icon: '🤚', group: 'Home', words: ['pat', 'soft'], biped: true,
+    params: { hand: { label: 'Hand', options: ['right', 'left'], value: 'right' }, pats: { label: 'Pats', min: 1, max: 5, step: 1, value: 2 }, reach: { label: 'Reach down', min: 0, max: 1, step: 0.05, value: 0.6 }, seconds: { label: 'Length (s)', min: 0.8, max: 5, step: 0.1, value: 2 }, repeats: { label: 'Repeat', min: 1, max: 3, step: 1, value: 1 } },
+    make: ({ hand, pats, reach, seconds }) => {
+      const s = hand === 'left' ? 'l' : 'r', m = s === 'l' ? 1 : -1; const r = Number(reach);
+      const over = { spine: [14 + 18 * r, 4 * m], head: [14], [`${s}ArmUp`]: -40, [`${s}Arm`]: [-58 + 6 * r], [`${s}Fore`]: [-34], [`${s}Hand`]: [-14, 0, 0], legs: [-10 * r, 18 * r], up: -0.02 * r };
+      const down = { ...over, [`${s}Arm`]: [-44 + 6 * r], [`${s}Fore`]: [-22], [`${s}Hand`]: [8, 0, 0] };
+      const keys = [{ t: 0, pose: {} }, { t: 0.2, pose: over }]; const n = Math.max(1, Math.round(pats));
+      for (let i = 0; i < n; i++) { const a = 0.22 + (0.6 * i) / n, b = 0.22 + (0.6 * (i + 1)) / n; keys.push({ t: a + (b - a) * 0.45, pose: down }, { t: b, pose: over }); }
+      keys.push({ t: 1, pose: {} });
+      return { seconds, keys };
+    },
+  },
+  hug: {
+    label: 'Hug', icon: '🤗', group: 'Home', words: ['hug', 'love', 'cuddle'], biped: true,
+    params: { seconds: { label: 'Length (s)', min: 1, max: 8, step: 0.1, value: 3 }, repeats: { label: 'Repeat', min: 1, max: 1, step: 1, value: 1 } },
+    make: ({ seconds }) => {
+      const wrap = (k) => ({ arms: [-78, -34 - 6 * k], fores: [-62 - 8 * k, -24], armUp: -6, spine: [10, 0, 4 * k], head: [6, 0, 10] });
+      return { seconds, keys: [{ t: 0, pose: {} }, { t: 0.25, pose: wrap(0) }, { t: 0.5, pose: wrap(1) }, { t: 0.75, pose: wrap(-1) }, { t: 1, pose: {} }] };
+    },
+  },
+  tuck: {
+    label: 'Tuck in the blanket', icon: '🛏️', group: 'Home', words: ['tuck', 'blanket', 'goodnight'], biped: true,
+    params: { seconds: { label: 'Length (s)', min: 1, max: 6, step: 0.1, value: 2.4 }, repeats: { label: 'Repeat', min: 1, max: 1, step: 1, value: 1 } },
+    make: ({ seconds }) => {
+      const low = { spine: [30], head: [16], arms: [-52, 0], armUp: -42, fores: [-30], legs: [-12, 22], up: -0.03 };
+      const high = { spine: [24], head: [12, 0, 6], arms: [-70, 0], armUp: -34, fores: [-46], legs: [-10, 18], up: -0.025 };
+      return { seconds, keys: [{ t: 0, pose: {} }, { t: 0.25, pose: low }, { t: 0.7, pose: high }, { t: 1, pose: {} }] };
+    },
+  },
+  sway: {
+    label: 'Sway to the music', icon: '🎵', group: 'Home', words: ['sing', 'song', 'music', 'sway', 'together'], biped: true,
+    params: { beats: { label: 'Beats', min: 2, max: 16, step: 1, value: 4 }, seconds: { label: 'Length (s)', min: 1, max: 12, step: 0.1, value: 2.7 }, arms: { label: 'Arms', options: ['low', 'up'], value: 'low' }, repeats: { label: 'Repeat', min: 1, max: 6, step: 1, value: 1 } },
+    make: ({ beats, seconds, arms }) => {
+      // a gentle side-to-side on every beat (one beat = seconds / beats); a soft dip on each step, the head following
+      const side = (d) => ({ spine: [2, 0, 7 * d], head: [-2, 4 * d, 6 * d], side: 0.012 * d, up: -0.012, legs: [-6, 12], armUp: arms === 'up' ? 58 : -52, fores: [arms === 'up' ? -30 : -40, 0, 8 * d] });
+      const keys = [{ t: 0, pose: {} }]; const n = Math.max(2, Math.round(beats));
+      for (let i = 0; i < n; i++) keys.push({ t: (i + 0.5) / n, pose: side(i % 2 ? 1 : -1) });
+      keys.push({ t: 1, pose: {} });
+      return { seconds, keys };
+    },
+  },
   // ---------------- riding playground equipment (held for the whole ride; the engine puts the hips on the seat) ----------------
   sit: {
     label: 'Sit', icon: '🪑', group: 'Playground', words: ['sit', 'seat'], biped: true,
@@ -663,6 +790,9 @@ export const defaultParams = (id) => Object.fromEntries(Object.entries(MOVES[id]
 export function buildClip(rig, moveId, params, name) {
   const mv = MOVES[moveId]; const p = { ...defaultParams(moveId), ...params };
   const one = mv.make(p); const reps = Math.max(1, Math.round(p.repeats || 1));
+  // A base posture under the whole move (kneeling, sitting, lying): every key — the rest keys too — starts from it, so the
+  // gesture blends from and back to the posture, never to standing.
+  if (p.base && BASES[p.base]) one.keys = one.keys.map((k) => ({ ...k, pose: { ...BASES[p.base], ...k.pose } }));
   const total = one.seconds * reps, fps = 30, n = Math.max(2, Math.round(total * fps) + 1);
   const times = new Float32Array(n);
   const used = new Set(['hips']);
