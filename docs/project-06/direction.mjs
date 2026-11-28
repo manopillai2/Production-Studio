@@ -219,7 +219,7 @@ const shots = [
   shot('Instrumental · ball game at sunset (orbit)', 39, 39, pg(), [
     mira([-0.6, 0, 1.2], { actions: [A('kickBall', 0.5), A('cheer', 2.3), A('dance', 3.6, { seconds: 3.0 }), A('twirl', 6.8)] }),
     mango([0.9, 0, 1.6], { actions: [A('jumpCatch', 1.25), A('rollOver', 3.8), A('excitedHop', 6.8)] }),
-    ball([-0.3, 0, 1.75], { motion: { type: 'bounce', to: [0.55, 0, 2.3], hops: 3, height: 0.45, start: 0.72 } }), // kicked at 0.72 s: real arcs, lower each bounce, then rolls
+    ball([-0.35, 0, 1.75], { scale: 0.38, motion: { type: 'bounce', to: [0.1, 0, 2.35], hops: 3, height: 0.45, start: 0.72 } }), // kicked at 0.72 s: real arcs, lower each bounce, then rolls; stops between them, covering neither
   ], { preset: 'group', size: 'full', yaw: 0.1, height: -0.2 }, sunset, en(39) + 0.6, st(40)),
 
   // ===== Slow chorus: gentle =====
