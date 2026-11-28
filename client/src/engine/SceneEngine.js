@@ -180,7 +180,7 @@ export function motionAt(actor, u, D) {
       // (It used to float along |sin| arcs spread over the whole shot: a slow, weightless ball.)
       const G = 9.8, e = Number(m.restitution ?? 0.55), t0 = 0; // m.start is already applied above (bounce is a travelling motion)
       const to = m.to || base; const dx = to[0] - base[0], dz = to[2] - base[2]; const dist = Math.hypot(dx, dz);
-      const R = Number(m.radius ?? 0.11 * s / 0.45);
+      const R = Number(m.radius ?? 0.45 * s); // the ball's radius (a prop is ~0.9 m tall at scale 1)
       const n = Math.max(1, Math.round(Number(m.hops ?? 2))); const h0 = Number(m.height ?? 0.5);
       const arcs = []; let tSum = 0; for (let i = 0; i < n; i++) { const h = h0 * e ** (2 * i); const T = 2 * Math.sqrt((2 * h) / G); arcs.push({ t: tSum, T, h }); tSum += T; }
       const roll = Number(m.roll ?? 0.7), airFrac = dist > 0.01 ? 0.85 : 0; // most of the distance in the air, the rest rolling
@@ -194,7 +194,10 @@ export function motionAt(actor, u, D) {
       if (tt > 0 && tt < 0.05) squash = Math.max(squash, 1 - tt / 0.05); // the kick
       pos[0] = base[0] + dx * k; pos[2] = base[2] + dz * k; pos[1] = base[1] + y;
       sy = 1 - 0.16 * squash; // squash on impact (the engine keeps the width)
-      if (dist > 0.01) rot[0] += (dist * k) / R; // rolling spin (the ball faces its direction of travel, see life())
+      if (dist > 0.01) { // rolling spin about the ball's CENTRE (its origin is at the bottom: spinning about that sank it into the ground)
+        const a = (dist * k) / R; rot[0] += a;
+        pos[1] += R - R * Math.cos(a); pos[0] -= R * Math.sin(a) * (dx / dist); pos[2] -= R * Math.sin(a) * (dz / dist);
+      }
       break;
     }
     case 'twinkle': s *= 1 + (m.amount ?? 0.12) * Math.sin(u * (m.speed ?? 3) * Math.PI * 2); break;
@@ -1090,6 +1093,12 @@ export class SceneEngine {
     // their own subject on purpose). Look at where they land on screen and back off / re-aim until they fit.
     if (!['closeup', 'medium'].includes(size) || !single) {
       const boxes = single ? [F] : g.actors.map((a, i) => (!a.sky ? (['follow', 'closeup'].includes(preset) ? this._subjectBox(g, i, true) : g.frameOf?.[i]) : null)).filter(Boolean);
+      // The object the lyric names must be in the picture too: a kite always; balloons when the shot asks (frame: true).
+      for (const eq of g.equip || []) {
+        if (!(eq.type === 'kite' || (eq.type === 'balloons' && eq.spec.frame))) continue;
+        eq.group.updateMatrixWorld(true); const bb = new THREE.Box3().setFromObject(eq.group); if (bb.isEmpty()) continue;
+        boxes.push({ x0: bb.min.x, x1: bb.max.x, z0: bb.min.z, z1: bb.max.z, gy: bb.min.y, H: bb.max.y - bb.min.y });
+      }
       const v = new THREE.Vector3();
       for (let it = 0; it < 4 && boxes.length; it++) {
         cam.position.set(...pos); cam.lookAt(...look); cam.updateMatrixWorld(true);

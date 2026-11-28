@@ -162,7 +162,8 @@ function kite(p) {
   const T = [0, 0.75, 0], Bm = [0, -1.05, 0], Lf = [-0.55, 0.1, 0], Rt = [0.55, 0.1, 0], C = [0, 0.1, 0.06];
   k.add(quad([T, Lf, C], PAL.red), quad([T, C, Rt], '#FF7A6B'), quad([Lf, Bm, C], PAL.yellow), quad([C, Bm, Rt], PAL.orange));
   k.add(tube([0, 0.75, 0.03], [0, -1.05, 0.03], 0.025, PAL.white), tube([-0.55, 0.1, 0.03], [0.55, 0.1, 0.03], 0.025, PAL.white));
-  const tail = []; for (let i = 0; i < 9; i++) { const b = new THREE.Group(); const c = [PAL.blue, PAL.green, PAL.purple, PAL.pink, PAL.yellow][i % 5];
+  // p.tail: number of bows (a long tail can reach the ground)
+  const tail = []; for (let i = 0; i < Math.max(2, Math.round(p.tail ?? 9)); i++) { const b = new THREE.Group(); const c = [PAL.blue, PAL.green, PAL.purple, PAL.pink, PAL.yellow][i % 5];
     for (const s2 of [-1, 1]) { const w = mesh(new THREE.ConeGeometry(0.09, 0.18, 8), c); w.rotation.z = s2 * Math.PI / 2; w.position.x = s2 * 0.09; b.add(w); }
     k.add(b); tail.push(b); }
   const strGeo = new THREE.BufferGeometry(); strGeo.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(3 * 24), 3));

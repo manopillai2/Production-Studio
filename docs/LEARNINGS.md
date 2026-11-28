@@ -389,6 +389,10 @@ The user reviewed the round 4 video and saved screenshots in `screenshots/`. Eac
 
 | Jump height, crouch, nod count and kite tugs ignored | The engine passed only `seconds`, `repeats` and `hand` to the moves; every other per-action setting was silently dropped. Lengths were also randomly varied ±7%, which would make a ride drift out of step with its equipment. | Pass every setting the move defines; keep exact lengths for rides (`hold`) and `exact` actions. **When a setting "does nothing", check that it reaches the code that uses it.** | Fixed |
 
+| Kite above the frame once raised; tail bows lying on the ground | The camera framed only the characters; the kite's 9-bow tail (~2.5 m) reached the ground. | The camera now fits the kite (and balloons with `frame: true`) into the picture. Kite tail length is a setting (`tail`). Low camera, kite in front of the child. | Fixed and seen |
+| Ball sinking into the ground while rolling | Props have their origin at the bottom, so spinning about it swung the ball through the floor. | Roll about the centre: compensate the position for the spin. **Check where a model's origin is before rotating it.** | Fixed and seen |
+| Preview never loaded after a small edit | A scripted edit added a `//` comment in the MIDDLE of a line, commenting out the code after it. The syntax check passed, but it failed at runtime. | Put comments on their own line in scripted edits; after any engine edit, render one frame (not just `node --check`). | Fixed |
+
 General lessons from this round:
 - **Review the finished video the way the user does:** full frames at normal size, every shot, against the lyric. Close-up checks alone missed the medium-shot mouth, the blur on Mango and the hidden wave.
 - **An automatic "fixer" can create worse problems than the one it fixes.** Always compare with and without it before keeping it.

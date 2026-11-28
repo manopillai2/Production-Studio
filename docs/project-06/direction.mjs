@@ -102,7 +102,7 @@ const shots = [
     { preset: 'group', size: 'full', yaw: 0.65, height: -0.1 }, day),
   shot('Chorus 1 · close-up: yes and no, hello, goodbye', 6, 6, pg(), [
     mira(M0, { actions: yesNoMira(6) }), mango(D0),
-  ], { preset: 'group', size: 'medium', target: 0, yaw: 0.15 }, day),
+  ], { preset: 'group', size: 'full', target: 0, yaw: 0.15 }, day),
   shot('Chorus 1 · come on, copy, give it a try! (to the viewer)', 7, 7, pg(), [
     mira(M0, { actions: copyMira(7, [A('dance', 4.0, { seconds: 3.2 })]) }),
     mango(D0, { actions: [A('pawRaise', W(7, 2)), A('excitedHop', W(7, 3)), A('spin', 4.6)] }),
@@ -110,7 +110,7 @@ const shots = [
 
   // ===== Verse 2 =====
   shot('Mira jumps up, up, up, up! (low angle)', 8, 8, pg(), [
-    mira(M0, { actions: [2, 3, 4, 5].map((n) => A('jump', Math.max(0, W(8, n) - 0.28), { seconds: 0.55, height: 0.3, crouch: 0.6 })) }), mango(D0, { actions: [A('excitedHop', W(8, 5))] }),
+    mira(M0, { actions: [2, 3, 4, 5].map((n) => A('hop', Math.max(0, W(8, n) - 0.12), { seconds: Math.max(0.3, Math.min(0.5, (n < 5 ? W(8, n + 1) : W(8, n) + 0.45) - W(8, n))), height: 0.16 })) }), mango(D0, { actions: [A('excitedHop', W(8, 5))] }),
   ], { preset: 'tilt-up', size: 'full', height: -1.2, target: 0, yaw: -0.15 }, day),
   shot('Mango wags, a happy pup! (close-up)', 9, 9, pg(), [
     mira(M0), mango(D0, { actions: [A('tailWag', W(9, 1), { seconds: Math.max(1, W(9, 4) - W(9, 1)) }), A('excitedHop', W(9, 4))] }),
@@ -137,7 +137,7 @@ const shots = [
 
   // ===== Verse 2 again: the beach ball =====
   shot('Mira jumps up, up, up, up! (the other side)', 16, 16, pg(), [
-    mira(M0, { actions: [2, 3, 4, 5].map((n) => A('jump', Math.max(0, W(16, n) - 0.28), { seconds: 0.55, height: 0.3, crouch: 0.6 })) }), mango(D0, { actions: [A('excitedHop', W(16, 5))] }),
+    mira(M0, { actions: [2, 3, 4, 5].map((n) => A('hop', Math.max(0, W(16, n) - 0.12), { seconds: Math.max(0.3, Math.min(0.5, (n < 5 ? W(16, n + 1) : W(16, n) + 0.45) - W(16, n))), height: 0.16 })) }), mango(D0, { actions: [A('excitedHop', W(16, 5))] }),
   ], { preset: 'group', size: 'full', yaw: -0.45, height: -0.5 }, day),
   shot('Mango wags, a happy pup! (two-shot)', 17, 17, pg(), [
     mira(M0, { actions: [A('clap', W(17, 3), { seconds: 1.0 })] }), mango(D0, { actions: [A('tailWag', W(17, 1), { seconds: Math.max(1, W(17, 4) - W(17, 1)) }), A('excitedHop', W(17, 4))] }),
@@ -157,22 +157,22 @@ const shots = [
     { preset: 'orbit', size: 'full', amount: 0.6, height: -0.2, target: 0 }, day),
   shot('Chorus 3 · close-up: yes and no, hello, goodbye (candy bokeh)', 22, 22, cg(), [
     mira(M0, { actions: yesNoMira(22, 'left') }), mango(D0, { actions: yesNoMango(22) }),
-  ], { preset: 'group', size: 'medium', target: 0, yaw: -0.2 }, day),
+  ], { preset: 'group', size: 'full', target: 0, yaw: -0.2 }, day),
   shot('Chorus 3 · come on, copy! Twirl, and Mango spins', 23, 23, cg(), [
     mira(M0, { actions: copyMira(23, [A('twirl', 3.6)]) }), mango(D0, { actions: [A('pawRaise', W(23, 2)), A('spin', W(23, 3))] }),
   ], { preset: 'dolly-in', size: 'full', yaw: 0.25, height: -0.3 }, day, st(23), st(24)),
 
   // ===== Verse 3: the kite =====
   // Mira (in profile, facing left) holds the string up; the kite flies in FRONT of her, up on the left.
-  shot('Red kite flying high, so high! (profile, the kite ahead of her)', 24, 24, cg({ type: 'kite', pos: [-2.2, 2.3, 1.15], anchor: [2.25, -1.52, 0.35], size: 1.4 }), [
+  shot('Red kite flying high, so high! (profile, the kite ahead of her)', 24, 24, cg({ type: 'kite', pos: [-1.25, 2.15, 1.35], anchor: [1.3, -1.35, 0.15], size: 0.95, tail: 3 }), [
     mira([0.3, 0, 1.6], { rot: [0, -1.57, 0], actions: [hold('holdKite', 12, { tugs: 3 })] }), mango([0.95, 0, 1.25], { rot: [0, -1.57, 0], look_at: undefined, actions: [A('headTilt', W(24, 3))] }),
-  ], { preset: 'group', size: 'wide', height: -0.5, yaw: 0.15 }, day),
-  shot('Dancing in the big blue sky (low, the kite dances)', 25, 25, cg({ type: 'kite', pos: [-2.2, 2.3, 1.15], anchor: [2.25, -1.52, 0.35], size: 1.4 }), [
+  ], { preset: 'group', size: 'full', height: -1.1, yaw: 0.15, distance: 1.25 }, day),
+  shot('Dancing in the big blue sky (low, the kite dances)', 25, 25, cg({ type: 'kite', pos: [-1.25, 2.15, 1.35], anchor: [1.3, -1.35, 0.15], size: 0.95, tail: 3 }), [
     mira([0.3, 0, 1.6], { rot: [0, -1.57, 0], actions: [hold('holdKite', 12, { tugs: 5 })] }), mango([0.95, 0, 1.25], { rot: [0, -1.57, 0], look_at: undefined, actions: [A('excitedHop', W(25, 1))] }),
-  ], { preset: 'group', size: 'wide', height: -0.9, yaw: -0.2, dof: 'off' }, day),
-  shot('Swooping low, low, low it goes!', 26, 26, cg({ ...{ type: 'kite', pos: [-2.2, 2.3, 1.15], anchor: [2.25, -1.52, 0.35], size: 1.4 }, swoop: { at: W(26, 0), dur: Math.max(1.6, W(26, 4) - W(26, 0)), drop: 1.1 } }), [
+  ], { preset: 'group', size: 'full', height: -1.3, yaw: -0.15, distance: 1.3, dof: 'off' }, day),
+  shot('Swooping low, low, low it goes!', 26, 26, cg({ ...{ type: 'kite', pos: [-1.25, 2.15, 1.35], anchor: [1.3, -1.35, 0.15], size: 0.95, tail: 3 }, swoop: { at: W(26, 0), dur: Math.max(1.6, W(26, 4) - W(26, 0)), drop: 1.1 } }), [
     mira([0.3, 0, 1.6], { rot: [0, -1.57, 0], actions: [hold('holdKite', 12, { tugs: 2 })] }), mango([0.95, 0, 1.25], { rot: [0, -1.57, 0], look_at: undefined, actions: [A('excitedHop', W(26, 3))] }),
-  ], { preset: 'group', size: 'wide', yaw: 0.3, height: -0.2 }, day),
+  ], { preset: 'group', size: 'full', yaw: 0.3, height: -0.8, distance: 1.25 }, day),
   shot('Mango sniffs low with his nose (close-up)', 27, 27, cg(), [
     mira([-0.4, 0, 2.2]), mango([0.6, 0, 2.6], { actions: [A('sniff', W(27, 1), { seconds: Math.max(1.2, en(27) - st(27) - W(27, 1)) })] }),
   ], { preset: 'closeup', size: 'closeup', target: 1, yaw: 0.3 }, day),
@@ -198,7 +198,7 @@ const shots = [
   ], { preset: 'group', size: 'medium', yaw: -0.35 }, sunset),
   shot('Wave hello, the day was fun! (medium: the waving hand in the picture)', 34, 34, pg(), [
     mira(M0, { actions: [A('wave', W(34, 0), { seconds: Math.max(1.6, en(34) - st(34) - W(34, 0)) })] }), mango(D0, { actions: [A('pawRaise', W(34, 1))] }),
-  ], { preset: 'group', size: 'medium', target: 0, yaw: 0.1 }, sunset),
+  ], { preset: 'dolly-in', size: 'full', target: 0, yaw: 0.1 }, sunset),
   shot('Wave goodbye to the setting sun! (profile, sun behind)', 35, 35, pg(), [
     mira([-0.4, 0, 1.4], { rot: [0, 0.7, 0], actions: [A('wave', W(35, 0), { seconds: 2.4 }), A('wave', 3.0, { seconds: 1.6, hand: 'left' })] }),
     mango([0.35, 0, 1.0], { rot: [0, 0.7, 0], look_at: undefined, actions: [A('pawRaise', 0.6), A('tailWag', 2.8)] }),
@@ -211,7 +211,7 @@ const shots = [
     { preset: 'group', size: 'full', yaw: 0.55, height: -0.2 }, sunset),
   shot('Chorus 5 · close-up: yes and no, hello, goodbye', 38, 38, pg(), [
     mira(M0, { actions: yesNoMira(38) }), mango(D0, { actions: yesNoMango(38) }),
-  ], { preset: 'group', size: 'medium', target: 0, yaw: -0.15 }, sunset),
+  ], { preset: 'group', size: 'full', target: 0, yaw: -0.15 }, sunset),
   shot('Chorus 5 · come on, copy! Clap and cheer', 39, 39, pg(), [
     mira(M0, { actions: copyMira(39) }), mango(D0, { actions: [A('pawRaise', W(39, 2)), A('excitedHop', W(39, 3))] }),
   ], { preset: 'dolly-in', size: 'full', yaw: 0.2, height: -0.2 }, sunset, st(39), en(39) + 0.6),
@@ -226,7 +226,7 @@ const shots = [
     { preset: 'dolly-in', size: 'wide', yaw: 0.4, height: -0.1, transition: 'dissolve' }, sunset),
   shot('Slow chorus · close-up: hello, goodbye', 42, 42, pg(), [
     mira(M0, { actions: yesNoMira(42) }), mango(D0, { actions: yesNoMango(42) }),
-  ], { preset: 'group', size: 'medium', target: 0, yaw: 0.2 }, sunset),
+  ], { preset: 'group', size: 'full', target: 0, yaw: 0.2 }, sunset),
   shot('Slow chorus · a soft seesaw (push in)', 43, 43, seesawAt(43, 3.4, { amplitude: 10 })(pg), onSeesaw(3.4, seesawOff(43, 3.4)),
     { preset: 'dolly-in', size: 'full', yaw: -0.3, height: -0.6 }, sunset, st(43), en(43)),
   shot('Instrumental · up the ladder, down the slide', 43, 43, pg(SLIDE), [
@@ -234,7 +234,7 @@ const shots = [
   ], { preset: 'group', size: 'wide', yaw: -1.15, height: 0.1 }, sunset, en(43), 161.0),
   shot('Instrumental · skipping together', 43, 43, pg(), [
     mira([-2.3, 0, 1.6], { motion: { type: 'path', to: [1.2, 0, 1.2] }, actions: [A('skip', 0.1, { seconds: 0.62, repeats: 9 })] }),
-    mango([-1.7, 0, 0.5], { motion: { type: 'path', to: [2.4, 0, 0.2] } }), // a little ahead, on the far side
+    mango([-1.2, 0, 0.1], { motion: { type: 'path', to: [2.9, 0, -0.2] } }), // ahead and well behind her line: never hidden behind Mira
   ], { preset: 'follow', size: 'full', target: 0, yaw: 0.6, height: -0.3 }, sunset, 161.0, st(44)),
 
   // ===== Final chorus =====
