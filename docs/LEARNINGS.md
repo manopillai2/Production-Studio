@@ -346,6 +346,30 @@ Implementation lessons:
 - **Check the finished video's frames, not only the preview.** The round 4 render looked right in the singing close-ups, but frame-by-frame extraction of another close-up caught the broken blink.
 - **Mouth design:** her own smile opening. The top edge sits on the painted smile line with the corners slightly raised, the corners are rounded, the bottom is round, and there's a tongue and a soft band of teeth. Closed, it is the smile line itself.
 
+### Project 06 round 5 (28 Nov 2026): the user's screenshot review
+The user reviewed the round 4 video and saved screenshots in `screenshots/`. Each problem, its cause, and what we learned:
+
+| Problem the user saw | Real cause (found by testing, not guessing) | Lesson / fix | Status |
+|---|---|---|---|
+| Swing and seesaw legs "completely broken", "very artificial" | The automatic **limb solver** pushed legs out of the equipment by twisting them (knees jammed up, legs bunched). A render with the solver switched off (`globalThis.__noLegSolver = true`) showed natural legs. | **Don't fix a pose by searching for any angle that clears the equipment; fit the equipment to the body.** The solver is now off for rides (opt-in `ride.solve`), and the clearance check verifies the result. | Fixed and seen in close-ups |
+| Legs through the swing seat | The seat (32 cm) was deeper than a small child's thigh, so the shins hung through its front edge. | Size equipment to the character: a shallow seat (19 cm), the child sitting at its back, knees at the front edge. Tuck less on the back-swing. | Fixed; small 3–4 cm grazes left to check |
+| Mira's shins rubbing the seesaw | Thighs not spread enough for the plank. | Straddle wider (47°). | Small grazes left to check |
+| Puppy floating above his seat / sitting off it | Two lifts stacked (the solver's "settle" plus the "sit on top" rule), and a nudge (`back: -0.1`) moved him off the seat. Bone positions understated his chubby legs. | **Seat a character from real skin points against the equipment's exact shapes**, in both directions: lift if sinking, lower if hovering, to a few mm of contact. Avoid nudges that move a rider off the seat. | Fixed and seen; seesaw nudge removal in progress |
+| Puppy blurry in most shots | Background blur focused on ONE distance (Mira's), so Mango was out of focus a step nearer or farther. | **Blur needs a focus band covering every character in the action** (nearest to farthest plus their depth). Only what's beyond them blurs. | Built; render check pending |
+| Thin black line above Mira's mouth | The mouth drawing had a dark outline; with the white teeth under it, the top edge read as a separate line. | Draw the teeth flush under the lip; no dark outline. | Built; check pending |
+| Mouth "completely broken" in medium shots | Smoothing for small sizes (mipmaps) was off, so a mouth a few pixels wide broke up into jagged bits. It had been switched off to stop a smear in close-ups, which flattening the groove later fixed properly. | **A texture fix for close-ups must also be checked in medium and wide shots.** Mipmaps are back on. | Built; check pending |
+| Ball bouncing "very artificial" | The bounce moved along \|sin\| arcs spread over the WHOLE shot, ignoring when it was kicked: a slow, weightless ball floating at chest height. | Real physics: rest until kicked, gravity arcs, each bounce about 55% as high, squash on landing, spin while travelling, roll to a stop. **Moving props need real physics; children notice floaty motion.** | Built; render check pending |
+| Elbows not moving; standing legs robotic | Poses left elbows locked straight (raised arms) and knees locked while standing and gesturing. | Every pose: elbows never lock (at least 16° of bend); standing knees stay soft (~5–10°). Cheer bends the elbows. | Built; check pending |
+| "Wave hello", but the hands hidden or coming from behind the ears | The close-up cropped the hands, and the wave raised the arm up and *back*, behind the head. | **A gesture the lyric names must be framed so it's visible** (a medium shot for waves). The wave hand comes up in FRONT, beside the face, with the elbow bent. | Pose built; shot change in progress |
+| Kite behind the children | They faced the camera with the kite behind them; the string didn't reach a hand. | Characters face what they play with: profile or three-quarter view toward the kite, the kite in front of them, the string to the raised hand (new `holdKite` move). | In progress |
+| Balloons not fully in the picture | The shot was framed on the characters; the balloon bunch was above the frame. | **The object the lyric names must be fully in frame** while it is sung about. | In progress |
+| Actions not matching the words | Actions were placed by eye, not on the words. | Time actions to the words: estimate each word's time from syllables across the sung line; jumps on each "up", nods on "yes", the seesaw at the top on "up" and the bottom on "down" (an action `offset` starts a repeating ride part-way into its cycle). | In progress |
+
+General lessons from this round:
+- **Review the finished video the way the user does:** full frames at normal size, every shot, against the lyric. Close-up checks alone missed the medium-shot mouth, the blur on Mango and the hidden wave.
+- **An automatic "fixer" can create worse problems than the one it fixes.** Always compare with and without it before keeping it.
+- **Close unneeded apps before heavy work, and keep them closed.** Edge, Teams and Phone Link restart on their own.
+
 ## 14. Known limitations and ideas for later
 
 - Faces: no expressions on cue (blinks and singing mouths only). Lip-sync is spelling-based (no phoneme dictionary). Faint traces of the carved smile can show at the mouth corners. Four-legged characters (Mango) keep their painted mouth (his rig has a jaw bone that could be used).
