@@ -317,6 +317,11 @@ Implementation lessons:
 - **The same trap twice:** `rig.map` bones belong to a hidden analysis copy of the skeleton. Anything that moves a character's bones after posing must use `body.obj.getObjectByName(name)` (see `liveMap`).
 - **The server and the built client don't hot-reload.** Port 5175 serves `client/dist`, so rebuild with `npx vite build`. Server changes, such as a new allowed look value, need a server restart. Until then, the old code silently drops the new value.
 
+- **Meshy rigging options (checked against the API docs, 27 Nov 2026).**
+  - `include_fingers: true` adds finger bones to two-legged characters at no extra cost. The studio now asks for it for every NEW two-legged character, and retries without it when the hands can't take fingers (mitten hands). Existing characters are never re-rigged automatically.
+  - Meshy has no face, eye or jaw bones and no blend shapes, so expressions must be painted by the studio (FaceRig).
+  - Four-legged rigs can't have fingers.
+
 ## 14. Known limitations and ideas for later
 
 - Faces: no expressions on cue (blinks and singing mouths only). Lip-sync is spelling-based (no phoneme dictionary). Faint traces of the carved smile can show at the mouth corners. Four-legged characters (Mango) keep their painted mouth (his rig has a jaw bone that could be used).

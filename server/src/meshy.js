@@ -49,7 +49,8 @@ async function call(p, method, url, body) {
     404: 'Meshy no longer has this task (Meshy deletes API tasks after 3 days).',
     429: 'Meshy is busy (rate limit). Wait a moment and click again.',
   }[r.status] || `Meshy error ${r.status}${detail ? `: ${detail}` : ''}`;
-  throw new ProviderError(msg, [401, 402, 404].includes(r.status) ? 400 : 502);
+  const err = new ProviderError(msg, [401, 402, 404].includes(r.status) ? 400 : 502); err.meshyStatus = r.status; err.meshyDetail = detail;
+  throw err;
 }
 
 export const meshyCallCount = () => one('SELECT COUNT(*) n FROM meshy_calls').n;
@@ -216,11 +217,15 @@ export async function runJob(jobId, submitPermit = null) {
       // Step 3 (rigging) was requested with the same click, for this same model - it is not a retry.
       try {
         if (!out.rig_task_id) {
-          out.rig_task_id = (await call(submitPermit || permit('rig', { episodeId: ep, ref: `job ${jobId} rig (same generation)` }), 'POST', KINDS.rig, {
-            input_task_id: out.refine_id, animation_type: p.animation_type === 'quadruped' ? 'quadruped' : 'biped',
-            ...(p.height_meters ? { height_meters: Number(p.height_meters) } : {}),
-          })).result;
-          setJob(jobId, { output: out, message: 'Submitted to Meshy (rigging)...' });
+          const rp = submitPermit || permit('rig', { episodeId: ep, ref: `job ${jobId} rig (same generation)` });
+          const type = p.animation_type === 'quadruped' ? 'quadruped' : 'biped';
+          const body = { input_task_id: out.refine_id, animation_type: type, ...(p.height_meters ? { height_meters: Number(p.height_meters) } : {}) };
+          if (type === 'biped') { // finger bones when the hands allow it (see the meshy-rig job below)
+            try { out.rig_task_id = (await call(rp, 'POST', KINDS.rig, { ...body, include_fingers: true })).result; out.fingers = true; }
+            catch (e) { if (![400, 422].includes(e.meshyStatus)) throw e; out.fingers = false; out.fingers_note = e.meshyDetail || e.message; }
+          }
+          if (!out.rig_task_id) out.rig_task_id = (await call(rp, 'POST', KINDS.rig, body)).result;
+          setJob(jobId, { output: out, message: `Submitted to Meshy (rigging${out.fingers ? ', with finger bones' : out.fingers === false ? ', without finger bones: the hands can’t take them' : ''})...` });
         }
         const rt = await poll(jobId, 'rig', out.rig_task_id, 'Step 3/3: rigging for animation', 0.65, 0.95, ep);
         const files = await downloadRig(rt, out.model_path.replace(/\.glb$/, '-rig'));
@@ -259,11 +264,17 @@ export async function runJob(jobId, submitPermit = null) {
       if (!out.task_id) {
         if (!canSubmit) notSubmitted();
         const glb = fs.readFileSync(path.join(MEDIA_DIR, p.model_path));
-        out.task_id = (await call(submitPermit, 'POST', KINDS.rig, {
-          model_url: `data:model/gltf-binary;base64,${glb.toString('base64')}`, animation_type: p.animation_type || 'biped',
-          ...(p.height_meters ? { height_meters: p.height_meters } : {}),
-        })).result;
-        setJob(jobId, { output: out, status: 'running', message: 'Submitted to Meshy (rigging)…' });
+        const type = p.animation_type || 'biped';
+        const body = { model_url: `data:model/gltf-binary;base64,${glb.toString('base64')}`, animation_type: type, ...(p.height_meters ? { height_meters: p.height_meters } : {}) };
+        // Everything Meshy's rigging can add: finger bones for two-legged characters (no extra credits). Meshy has no
+        // face, eye or jaw bones: expressions are painted by the studio (FaceRig). If a model's hands can't take
+        // fingers (mitten hands), Meshy answers 422/400 and the rig is made without them.
+        if (type === 'biped') {
+          try { out.task_id = (await call(submitPermit, 'POST', KINDS.rig, { ...body, include_fingers: true })).result; out.fingers = true; }
+          catch (e) { if (![400, 422].includes(e.meshyStatus)) throw e; out.fingers = false; out.fingers_note = e.meshyDetail || e.message; }
+        }
+        if (!out.task_id) out.task_id = (await call(submitPermit, 'POST', KINDS.rig, body)).result;
+        setJob(jobId, { output: out, status: 'running', message: `Submitted to Meshy (rigging${out.fingers ? ', with finger bones' : out.fingers === false ? ', without finger bones: this model’s hands can’t take them' : ''})…` });
       }
       const t = await poll(jobId, 'rig', out.task_id, 'Rigging', 0.02, 0.9, ep);
       const files = await downloadRig(t, `world/${p.item_id}/rig-${Date.now()}`);

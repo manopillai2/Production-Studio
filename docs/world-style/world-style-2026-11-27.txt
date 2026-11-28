@@ -150,7 +150,7 @@ PROPORTIONS:
 - cheeks soft and full
 - chin small and rounded
 - limbs slightly simplified
-- hands clean and readable, not overly detailed (rigs have no finger bones: simple mitten-like hands)
+- hands clean and readable: five fingers clearly separated and slightly spread (new characters get finger bones from Meshy, so fingers can bend)
 - feet simple but grounded
 - torso compact
 - silhouette readable even from far away
@@ -916,7 +916,7 @@ ANIMATION-AWARE DESIGN RULES
 
 Every character, environment, and prop must be designed with motion in mind.
 
-Characters should be able to (design actions that need no gripping: rigs have no finger bones and cannot hold things):
+Characters should be able to (Mira and Mango have no finger bones; new two-legged characters get finger bones, but nothing can be held yet):
 - walk
 - run
 - skip and jump
@@ -961,6 +961,7 @@ MODEL-MAKING RULES (MESHY 3D)
 
 - Preview images: ONE object, centred, on a plain light background. No ground, scenery, clouds or leaves around a prop or character (Meshy turns everything in the picture into the model).
 - Characters: standing straight, arms clearly away from the body, legs apart, nothing hanging over the legs (no long skirts or capes), so they can be rigged and animated cleanly.
+- Hands: five separated, slightly spread fingers (not mittens or fists), so Meshy can add finger bones.
 - Character faces: a small, softly closed, painted mouth (see FACE).
 - Sceneries: a flat, open floor in the middle; decoration at the back and edges only.
 - Equipment and seats are sized for a small child (for example, a seat narrow enough to sit astride).
