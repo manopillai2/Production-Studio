@@ -8,6 +8,7 @@ import { analyseRig, buildClip, MOVES } from './MoveMaker.js';
 import { addFace, vocalEnvelope, mouthOpen, mouthShape } from './FaceRig.js';
 import { buildLandscape, blobShadowTexture, lookOf, SKY } from './Landscape.js';
 import { buildEquipment } from './Playground.js';
+import { buildHome } from './Home.js';
 
 /** Shot start/end times from lyric timestamps (Stage 3). Gaps (instrumental breaks) belong to the shot before. */
 export function shotTimes(shots, timing, duration) {
@@ -395,9 +396,9 @@ export class SceneEngine {
       // Playground equipment with moving parts (seesaw, swings, slide, merry-go-round), standing on the scenery.
       const equip = [];
       for (const e of Array.isArray(s.setting?.equipment) ? s.setting.equipment : []) {
-        const eq = buildEquipment(e); if (!eq) { this.warnings.push(`Shot “${s.title}”: unknown equipment “${e.type}”.`); continue; }
+        const eq = buildEquipment(e) || buildHome(e); if (!eq) { this.warnings.push(`Shot “${s.title}”: unknown equipment “${e.type}”.`); continue; }
         const p = e.pos || [0, 0, 0]; eq.group.position.y = surface(p[0], p[2]) + Number(p[1] || 0);
-        eq.group.traverse((m) => { if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; } });
+        eq.group.traverse((m) => { if (m.isMesh) { m.castShadow = !m.userData.noCast; m.receiveShadow = true; } }); // room walls and ceiling cast no shadow (the sun would darken the whole room)
         group.add(eq.group); equip.push(eq);
       }
       const actors = [];
@@ -622,7 +623,7 @@ export class SceneEngine {
   /** ~400 skin points of a rigged body (skinned with the current pose when read). */
   _skinPts(B) {
     return B.skinPts || (B.skinPts = (() => { const out = []; let total = 0; B.obj.traverse((m) => { if (m.isSkinnedMesh && !m.userData.mouthLayer) total += m.geometry.attributes.position.count; });
-      const stride = Math.max(1, Math.floor(total / 400)); B.obj.traverse((m) => { if (m.isSkinnedMesh && !m.userData.mouthLayer) for (let i = 0; i < m.geometry.attributes.position.count; i += stride) out.push([m, i]); }); return out; })());
+      const stride = Math.max(1, Math.floor(total / 800)); B.obj.traverse((m) => { if (m.isSkinnedMesh && !m.userData.mouthLayer) for (let i = 0; i < m.geometry.attributes.position.count; i += stride) out.push([m, i]); }); return out; })());
   }
   _poseBody(a, u) {
     const B = a.body; const fade = (x, w) => Math.min(1, Math.max(0, x / w));
@@ -905,11 +906,11 @@ export class SceneEngine {
           this._poseBody(a, u); if (!ride.stand) this._seatHips(g, a, ride);
           // The limb solver twisted legs into unnatural shapes (round 5 feedback): rides now rely on poses and equipment
           // that fit each other; the solver only runs when a shot asks for it (ride.solve), and the clearance check verifies.
-          if (g.equip?.length && a.actor.ride?.solve === true && !globalThis.__noLegSolver) { // legs never go into the equipment or the floor
+          if (g.equip?.length && a.actor.ride?.solve !== false && !a.body.rig.quad && !globalThis.__noLegSolver) { // legs never go into the equipment or the floor (gentle by default)
             const inv = new THREE.Matrix4().copy(g.group.matrixWorld).invert(); const gp = new THREE.Vector3();
             const ground = (x, z) => { gp.set(x, 0, z).applyMatrix4(inv); return g.surface(gp.x, gp.z) + g.group.matrixWorld.elements[13]; };
             a.holder.updateMatrixWorld(true);
-            a.body.legLeft = clearLegs(a, g.equip, ground, (a.body.rig.quad ? 0.1 : 0.055) * a.h0 * Number(a.actor.scale ?? 1)); // limb thickness: a chubby pup's legs are thicker
+            a.body.legLeft = clearLegs(a, g.equip, ground, 0.06 * a.h0 * Number(a.actor.scale ?? 1), a.actor.ride?.solve === true ? 'full' : 'gentle');
           }
           if (a.body.rig.quad && ride.seat && !ride.stand) { a.holder.updateMatrixWorld(true); this._onSeat(a, ride.seat, g.equip); } // a pup sits exactly ON his seat
         }
@@ -954,6 +955,39 @@ export class SceneEngine {
       if (!rec.turned) rec.base.copy(head.quaternion); rec.turned = true;
       head.quaternion.premultiply(pq.clone().invert().multiply(r).multiply(pq));
     });
+    this._holdProps(g, u);
+  }
+  /** Held props (Project 07, a cup): an equipment item with hold: [{actor, hand: 'right'|'left', from, to, place?}] follows
+   *  that character's palm while from <= u < to, upright, tilting toward the mouth as the hand comes up to it (a sip).
+   *  Outside every segment it stands where it was put (pos), or where the last finished segment says (place). */
+  _holdProps(g, u) {
+    for (const eq of g.equip || []) {
+      const hs = eq.spec?.hold; if (!Array.isArray(hs) || !hs.length) continue;
+      if (!eq.rest) eq.rest = { p: eq.group.position.clone(), ry: eq.group.rotation.y };
+      const h = hs.find((x) => u >= Number(x.from ?? 0) && u < Number(x.to ?? 1e9));
+      if (!h) {
+        const done = hs.filter((x) => u >= Number(x.to ?? 1e9) && x.place).at(-1);
+        eq.group.position.copy(done ? new THREE.Vector3(...done.place) : eq.rest.p); eq.group.rotation.set(0, done?.rot_y ?? eq.rest.ry, 0); eq.group.updateMatrixWorld(true); continue;
+      }
+      const a = g.actors[Number(h.actor ?? 0)]; const B = a?.body; if (!B) continue;
+      const live = (k) => B.rig.map[k] && B.obj.getObjectByName(B.rig.map[k].name); // the character's OWN bones, not the analysis copy
+      const hand = live(h.hand === 'left' ? 'lHand' : 'rHand'); if (!hand) continue;
+      a.holder.updateMatrixWorld(true);
+      const inv = new THREE.Matrix4().copy(g.group.matrixWorld).invert();
+      const wrist = hand.getWorldPosition(new THREE.Vector3());
+      const kn = hand.children.filter((c) => c.isBone).map((c) => c.getWorldPosition(new THREE.Vector3())); // finger roots (knuckles)
+      const palm = kn.length ? wrist.clone().lerp(kn.reduce((s2, v) => s2.add(v), new THREE.Vector3()).multiplyScalar(1 / kn.length), 0.75) : wrist;
+      const sc = eq.group.scale.y; const half = (eq.height || 0.1) / 2;
+      const p = palm.clone().applyMatrix4(inv); p.y -= half * (Number(h.grip ?? 0.9)); // the cup's middle in the palm
+      eq.group.position.copy(p);
+      // tilt toward the face when the hand is up at the mouth
+      const head = live('head'); let tilt = 0; const yaw = a.holder.rotation.y + Number(h.rot_y ?? Math.PI / 2);
+      eq.group.rotation.set(0, yaw, 0);
+      if (head) { const hp = head.getWorldPosition(new THREE.Vector3()); const mouth = hp.clone().add(new THREE.Vector3(0, -0.04 * a.holder.scale.y, 0));
+        const d = palm.distanceTo(mouth) / Math.max(0.3, a.h0 * a.holder.scale.y); tilt = Number(h.tilt ?? 0.75) * Math.min(1, Math.max(0, (0.32 - d) / 0.14));
+        if (tilt > 0) { const dir = mouth.clone().sub(palm); dir.y = 0; if (dir.lengthSq() > 1e-6) { dir.normalize(); const axis = new THREE.Vector3(0, 1, 0).cross(dir).normalize(); eq.group.quaternion.premultiply(new THREE.Quaternion().setFromAxisAngle(axis, tilt)); } } }
+      eq.group.updateMatrixWorld(true);
+    }
   }
 
   /**

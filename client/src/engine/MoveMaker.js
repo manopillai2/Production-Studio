@@ -119,7 +119,7 @@ function sampleKeys(keys, u, rig) {
 /** Sitting on a seat: thighs forward, knees bent, hips lowered, hands forward on a handle. */
 const SIT = () => ({ legs: [-82, 86], up: -0.2, spine: [6], armUp: -52, arms: [-48, -12], fores: [-38] });
 /** Astride a seesaw plank: a leg each side of the plank (thighs spread), knees bent, hands on the handle in front. */
-const STRADDLE = (k = 1) => ({ legs: [-58 * k, 72 * k], lThigh: [0, 0, 47], rThigh: [0, 0, -47], up: -0.2, spine: [8], armUp: -48, arms: [-50, -10], fores: [-42] });
+const STRADDLE = (k = 1) => ({ legs: [-58 * k, 72 * k], lThigh: [0, 0, 52], rThigh: [0, 0, -52], up: -0.2, spine: [8], armUp: -48, arms: [-50, -10], fores: [-42] });
 /** At the edge of a merry-go-round, facing out: legs dangle over the rim, hands hold the edge beside the hips. */
 const EDGE = () => ({ legs: [-78, 78], up: -0.2, spine: [4], armUp: -68, arms: [12, 0], fores: [-22] });
 /** On a slide: legs straight out along the chute, leaning back a little, hands on the sides. */

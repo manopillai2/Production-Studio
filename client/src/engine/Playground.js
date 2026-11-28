@@ -34,11 +34,11 @@ function seesaw(p) {
   const plank = new THREE.Group(); plank.position.y = H; g.add(plank);
   // A narrow plank and seat (like a real seesaw) so a child can sit astride with a leg down each side; the bumper is
   // at the very end, beyond the seat, where no foot hangs. Handles can be left off one end (a dog has none in front).
-  const board = box(L, 0.09, 0.26, PAL.purple, 0.04); board.position.y = 0.06; plank.add(board);
+  const board = box(L, 0.09, 0.22, PAL.purple, 0.04); board.position.y = 0.06; plank.add(board);
   const noHandle = new Set([].concat(p.no_handle || []));
   for (const s of [-1, 1]) {
     const wide = new Set([].concat(p.wide_seat || [])).has(s < 0 ? 'a' : 'b'); // a wide seat for a dog: all four paws on it
-    const seat = box(wide ? 0.5 : 0.4, 0.08, wide ? 0.46 : 0.27, PAL.pink, 0.04); seat.position.set(s * 1.32, 0.13, 0); plank.add(seat);
+    const seat = box(wide ? 0.5 : 0.4, 0.08, wide ? 0.46 : 0.22, PAL.pink, 0.04); seat.position.set(s * 1.32, 0.13, 0); plank.add(seat);
     if (!noHandle.has(s < 0 ? 'a' : 'b')) {
       const post = tube([s * 0.98, 0.1, 0], [s * 0.98, 0.5, 0], 0.035, PAL.teal); plank.add(post);
       const bar = tube([s * 0.98, 0.5, -0.18], [s * 0.98, 0.5, 0.18], 0.035, PAL.teal); plank.add(bar);
@@ -73,8 +73,8 @@ function swing(p) {
     for (const sx of [-0.22, 0.22]) pivot.add(tube([sx, 0, 0], [sx, -CH, 0], 0.018, '#C9C2D6'));
     // A shallow seat (as deep as a small child's thigh) with the child sitting at its back: knees at the front edge,
     // shins hanging free in front of it (a deep seat put the shins through the board).
-    const seat = box(0.56, 0.07, 0.19, c, 0.03); seat.position.y = -CH; pivot.add(seat);
-    seats[name] = seatPoint(name, pivot, [0, -CH + 0.06, -0.07], 0);
+    const seat = box(0.56, 0.07, 0.14, c, 0.03); seat.position.y = -CH; pivot.add(seat);
+    seats[name] = seatPoint(name, pivot, [0, -CH + 0.06, -0.045], 0);
     swings.push({ pivot, phase: i * 0.5 + (p.phase || 0), amp: THREE.MathUtils.degToRad((p.amplitude ?? 32) * (i ? 0.85 : 1)) });
   });
   const P = p.period ?? 2.6; // a 1.65 m swing really swings about every 2.6 s
@@ -142,7 +142,7 @@ function merryGoRound(p) {
     spin.add(tube([x, 0.1, z], [x, 0.7, z], 0.035, PAL.yellow));
     spin.add(tube([x, 0.7, z], [x * 0.2, 0.9, z * 0.2], 0.035, PAL.yellow));
   }
-  const seats = {}; ['a', 'b', 'c'].forEach((n, i) => { const a = (i / 3) * Math.PI * 2 + 0.5 + Math.PI / 3; seats[n] = seatPoint(n, spin, [Math.cos(a) * 1.07, 0.12, Math.sin(a) * 1.07], Math.PI / 2 - a); }); // at the rim, facing out: knees past the edge, legs dangle clear of it
+  const seats = {}; ['a', 'b', 'c'].forEach((n, i) => { const a = (i / 3) * Math.PI * 2 + 0.5 + Math.PI / 3; seats[n] = seatPoint(n, spin, [Math.cos(a) * 1.13, 0.12, Math.sin(a) * 1.13], Math.PI / 2 - a); }); // at the rim, facing out: knees past the edge, legs dangle clear of it
   const speed = p.speed ?? 0.55; // turns per second at full speed
   return {
     group: g, seats, height: Hd,

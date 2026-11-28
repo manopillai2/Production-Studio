@@ -91,7 +91,7 @@ function depthOf(pts, equip, ground, radius, grip) {
  * a: engine actor; equip: the shot's equipment; ground(x,z) → floor y (world); radius: limb thickness (m).
  * Every change is recorded in a.body.legUndo so the engine can undo it before the next frame. Returns the worst depth left.
  */
-export function clearLegs(a, equip, ground, radius) {
+export function clearLegs(a, equip, ground, radius, mode = 'full') {
   // The character's OWN bones (rig.map belongs to a hidden analysis copy of the skeleton).
   const M = a.body.liveMap || (a.body.liveMap = Object.fromEntries(Object.entries(a.body.rig.map).map(([k, b]) => [k, b && a.body.obj.getObjectByName(b.name)]).filter(([, b]) => b)));
   let worstLeft = 0;
@@ -103,6 +103,28 @@ export function clearLegs(a, equip, ground, radius) {
     bone.quaternion.premultiply(new THREE.Quaternion().setFromAxisAngle(la, ang)); bone.updateMatrixWorld(true);
   };
   const body = (M.spine1 || M.spine || M.hips)?.getWorldPosition(new THREE.Vector3());
+  // GENTLE mode (default for rides since round 5): keep the designed pose; only swing a leg slightly outward (at most
+  // ~17°), by the SMALLEST angle that clears the seat, found continuously (bisection), so legs never jump between frames.
+  // The full search below twisted legs into unnatural shapes and is only used when a shot asks for it.
+  if (mode === 'gentle') {
+    if (a.body.rig.quad) return 0;
+    for (const names of LEGS.slice(0, 2)) {
+      const bones = names.map((n) => M[n]).filter(Boolean); if (bones.length < 2) continue;
+      const root = bones[0], mid = bones[1];
+      const pen = () => depthOf(limbPoints(bones), equip, ground, radius, false);
+      const p0 = pen(); if (p0 < 0.004) continue;
+      const ref = root.parent?.getWorldPosition(new THREE.Vector3());
+      const out = Math.sign(side.dot(mid.getWorldPosition(new THREE.Vector3()).sub(ref || new THREE.Vector3()))) || (names[0].startsWith('l') ? 1 : -1);
+      const q0 = root.quaternion.clone(); undo.push([root, q0.clone()]);
+      const apply = (ang) => { root.quaternion.copy(q0); root.updateMatrixWorld(true); if (ang) rotWorld(root, fwd, out * ang); };
+      const MAX = 0.3; apply(MAX); const pMax = pen();
+      if (pMax >= p0) { apply(0); worstLeft = Math.max(worstLeft, p0); continue; } // swinging out doesn't help: leave the pose alone
+      let lo = 0, hi = MAX;
+      if (pMax < 0.004) for (let it = 0; it < 7; it++) { const m = (lo + hi) / 2; apply(m); if (pen() < 0.004) hi = m; else lo = m; }
+      apply(hi); worstLeft = Math.max(worstLeft, pen());
+    }
+    return worstLeft;
+  }
   // Four-legged riders keep their sitting pose (splayed dog legs look wrong): only the tail lifts; the settle step below
   // raises the whole body so it sits on top of the seat.
   const chains = a.body.rig.quad ? [[['tail0', 'tail1', 'tail2', 'tail3'], false]] : [...LEGS.slice(0, 2).map((n) => [n, false]), ...ARMS.map((n) => [n, true])];
