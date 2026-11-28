@@ -15,7 +15,7 @@ export const MOVE_CATALOG = [
   { id: 'stretch', rig: 'biped', label: 'Stretch & yawn', seconds: 3, desc: 'arms up, big stretch' },
   { id: 'greet', rig: 'biped', label: 'Reach out a hand (greeting)', seconds: 2.4, desc: 'reaches the right hand forward as if to shake hands, small nod' },
   { id: 'skip', rig: 'biped', label: 'Skip', seconds: 0.6, desc: 'skipping step (use with a path motion for a skipping journey; repeats = steps)' },
-  { id: 'kickBall', rig: 'biped', label: 'Kick a ball', seconds: 1.2, desc: 'kicks a ball forward (time the ball's bounce motion to start just after)' },
+  { id: 'kickBall', rig: 'biped', label: 'Kick a ball', seconds: 1.2, desc: 'kicks a ball forward (time the ball bounce motion to start just after)' },
   { id: 'twirl', rig: 'biped', label: 'Twirl', seconds: 1.6, desc: 'turns around with arms out' },
   { id: 'climb', rig: 'biped', label: 'Climb', seconds: 0.6, desc: 'climbing step, hand over hand (slide ladder)' },
   { id: 'holdKite', rig: 'biped', label: 'Fly a kite', seconds: 6, desc: 'holds a kite string up and forward, little tugs, watching the kite (hold: true; face the kite)' },
@@ -26,7 +26,7 @@ export const MOVE_CATALOG = [
   // four-legged
   { id: 'dogSit', rig: 'quad', label: 'Sit (four legs)', seconds: 6, desc: 'sits with the tail wagging (also used for riding a seat; hold: true)' },
   { id: 'rollOver', rig: 'quad', label: 'Roll over', seconds: 1.6, desc: 'rolls onto the back and over' },
-  { id: 'jumpCatch', rig: 'quad', label: 'Leap to catch', seconds: 1.2, desc: 'a playful leap (catch a ball: time it to the ball's arrival)' },
+  { id: 'jumpCatch', rig: 'quad', label: 'Leap to catch', seconds: 1.2, desc: 'a playful leap (catch a ball: time it to the ball arrival)' },
   { id: 'tailWag', rig: 'quad', label: 'Wag tail', seconds: 2, desc: 'happy tail wag with a little body wiggle' },
   { id: 'headTilt', rig: 'quad', label: 'Head tilt (listening)', seconds: 2, desc: 'tilts the head to one side, ears perk' },
   { id: 'earTwitch', rig: 'quad', label: 'Ear twitch', seconds: 1.2, desc: 'quick flick of the ears' },
