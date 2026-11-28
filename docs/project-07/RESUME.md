@@ -3,17 +3,12 @@
 Last updated: 2026-11-28 ~00:00, during Stage 4/5 test renders.
 
 ## NOW (read this first)
-- **Usage limit:** the user's standing instruction is to pause at the 5-hour limit and continue when it resets. `.claude/settings.json` has `autoContinueAtUsageLimit: true`; a SessionStart hook prints `docs/WORK-IN-PROGRESS.md`; a 30-minute cron (job f52c116d) re-checks this file. The cron lasts only while the session is open: **re-create it in a new session.**
-- **Paused for the Project 06 export** (started ~23:55). No renders, builds, server restarts or process kills until that session sends "export done" (or no `export.mjs 17` process is left).
-- The clearance run was stopped for it and has **no results yet**: run it again, in the background:
-  `GPU=1 STEP=0.25 node tools/testing/clearance.mjs 18 <outDir>` (takes over 10 minutes).
-- Built and applied: calm direction (clean cuts, still camera on spin and dance, slow shivers), level two-shots for the opening, glowing ceiling. After the export: render the contact sheet again.
-- Seen on the last contact sheet, still to fix:
-  1. intro and end card: the camera looks over the walls;
-  2. kitchen establishing shot: camera too far back, the room's edge shows below the floor;
-  3. bed shots: the footboard hides Leo (pat and lying down); try turning the bed or a higher, side camera;
-  4. TV shots: the TV is cut at the frame edge.
-- Then: face close-ups and blinks, 1080p export, review the MP4, 4K, final report, LEARNINGS, commit.
+- Follow the user's cost rules in `~/.claude/CLAUDE.md` (Sonnet by default, Haiku for routine helpers, token-efficient checks).
+- **Usage limit:** pause and continue after the reset (`autoContinueAtUsageLimit` is on; re-create the 30-minute cron in a new session).
+- Coordinate with the Project 06 session before builds, restarts and long renders.
+- Fixed and seen in renders (commit 7f225d3): gestures play over held postures; sips reach the mouth; sleeping eyes and covering quilt; tall open-front rooms; side-on bed; cup hand-over; intro title framing.
+- **Running:** the overlap check (`clearance.mjs 18`, output in this session's scratchpad `cl2`/`cl2.log`; re-run if lost).
+- Next: fix overlaps, one full contact sheet and a blink check, then the 1080p export (`Start-Process node export.mjs 18 <dir> 1080p`, env GPU=1), review the MP4, 4K, final report, LEARNINGS.
 
 ## Fixed facts
 - Episode id **18**, project number 7, approved lyrics id **28**. Server: `http://localhost:5175`. Restart it with `Start-Process node src/index.js` in `server/`.

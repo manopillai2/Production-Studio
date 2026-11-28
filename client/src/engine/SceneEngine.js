@@ -898,7 +898,7 @@ export class SceneEngine {
     const B = a.body; const live = (n) => B.rig.map[n] && B.obj.getObjectByName(B.rig.map[n].name);
     const arm = live(`${s}Arm`), fore = live(`${s}Fore`), hand = live(`${s}Hand`), head = live('head'); if (!arm || !fore || !hand || !head || k <= 0) return;
     const H = a.h0 * a.holder.scale.y; const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(a.holder.getWorldQuaternion(new THREE.Quaternion()));
-    const target = head.getWorldPosition(new THREE.Vector3()).addScaledVector(fwd, 0.14 * H).add(new THREE.Vector3(0, -0.005 * H, 0)); // the cup hangs just below the palm
+    const target = head.getWorldPosition(new THREE.Vector3()).addScaledVector(fwd, 0.14 * H).add(new THREE.Vector3(0, 0.03 * H, 0)); // the cup hangs just below the palm
     const start = [arm.quaternion.clone(), fore.quaternion.clone()]; (B.legUndo ||= []).push([arm, start[0].clone()], [fore, start[1].clone()]);
     const palm = () => { const w = hand.getWorldPosition(new THREE.Vector3()); const kn = hand.children.filter((c) => c.isBone).map((c) => c.getWorldPosition(new THREE.Vector3())); return kn.length ? w.lerp(kn.reduce((t, v) => t.add(v), new THREE.Vector3()).multiplyScalar(1 / kn.length), 0.75) : w; };
     for (let i = 0; i < 10; i++) for (const bone of [fore, arm]) {
