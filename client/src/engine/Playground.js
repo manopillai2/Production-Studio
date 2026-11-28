@@ -213,6 +213,14 @@ function balloons(p) {
   };
 }
 
+/** A glossy beach ball in the playground's rainbow colours (six panels, white caps): bright, readable, cheerful. */
+export function beachBall() {
+  const g = new THREE.Group(); const R = 0.5; const cols = [PAL.red, PAL.yellow, PAL.blue, PAL.green, PAL.purple, PAL.orange];
+  cols.forEach((c, i) => { const m = mesh(new THREE.SphereGeometry(R, 24, 24, (i / 6) * Math.PI * 2, Math.PI / 3, 0.16 * Math.PI, 0.68 * Math.PI), mat(c, { roughness: 0.28 })); g.add(m); });
+  for (const [a, b] of [[0, 0.16], [0.84, 0.16]]) g.add(mesh(new THREE.SphereGeometry(R, 24, 8, 0, Math.PI * 2, a * Math.PI, b * Math.PI), mat(PAL.white, { roughness: 0.3 })));
+  g.position.y = R; const root = new THREE.Group(); root.add(g); return root;
+}
+
 const BUILD = { seesaw, swing, slide, 'merry-go-round': merryGoRound, kite, balloons };
 /** Build one piece of equipment from a shot's setting.equipment entry {type, pos, rot_y, scale, ...params}. */
 export function buildEquipment(e) {

@@ -32,8 +32,8 @@ const day = { preset: 'day', look: CALM }, morning = { preset: 'morning', look: 
 
 // ---------- places: the equipment in use sits centre stage ----------
 const SEESAW = { type: 'seesaw', pos: [0, 0, 0.4], rot_y: 0, period: 2.4, amplitude: 14, no_handle: 'b', wide_seat: 'b' };
-const SWING = { type: 'swing', pos: [0, 0, 0], rot_y: 0, period: 2.6, amplitude: 28 };
-const MERRY = { type: 'merry-go-round', pos: [0, 0, 0.3], speed: 0.42 };
+const SWING = { type: 'swing', pos: [0, 0, 0], rot_y: 0, period: 3.2, amplitude: 22 }; // round 6: slower, gentler swinging
+const MERRY = { type: 'merry-go-round', pos: [0, 0, 0.3], speed: 0.22 }; // round 6: a gentle spin
 const SLIDE = { type: 'slide', pos: [0, 0, -1.4], rot_y: 0 };
 const pg = (...equipment) => ({ card_id: CARD.playground, scale: 1, equipment });
 const cg = (...equipment) => ({ card_id: CARD.candy, scale: 1, equipment });
@@ -45,7 +45,7 @@ const ALL = [ // the one establishing shot shows everything the children will pl
 const MIRA = 0.75, MANGO = 0.38;
 const mira = (pos, more = {}) => ({ card_id: CARD.mira, pos, scale: MIRA, ...more });
 const mango = (pos, more = {}) => ({ card_id: CARD.mango, pos, scale: MANGO, look_at: 0, ...more });
-const ball = (pos, more = {}) => ({ card_id: CARD.ball, pos, scale: 0.45, ...more });
+const ball = (pos, more = {}) => ({ card_id: CARD.ball, procedural: 'beachball', pos, scale: 0.45, ...more }); // round 6: a bright rainbow beach ball (studio-built)
 const hold = (move, seconds, extra = {}) => ({ move, at: 0, seconds, hold: true, ...extra });
 const A = (move, at, extra = {}) => ({ move, at, ...extra });
 // riders (equipment index 0 in every ride shot)
@@ -56,7 +56,7 @@ const onSeesaw = (period = 2.4, off = 0) => [
   mira([-1.3, 0, 0.4], { ride: { equip: 0, seat: 'a' }, actions: [hold('seesawRide', period, { repeats: 10, offset: off })] }),
   mango([1.3, 0, 0.4], { ride: { equip: 0, seat: 'b', lift: 0.02 }, actions: [hold('dogSit', 30)] }),
 ];
-const onSwing = (period = 2.6) => [
+const onSwing = (period = 3.2) => [
   mira([-0.62, 0, 0], { ride: { equip: 0, seat: 'a' }, actions: [hold('swingRide', period, { repeats: 8 })] }),
   mango([0.62, 0, 0], { ride: { equip: 0, seat: 'b', lift: 0.02 }, actions: [hold('dogSit', 30)] }),
 ];
@@ -74,7 +74,8 @@ const yesNoMango = (i) => [A('nod', W(i, 0), { seconds: Math.max(0.5, W(i, 2) - 
 // "Come on, copy, give it a try!": reach out on "come on", clap on "copy", cheer on "give it a try".
 const copyMira = (i, after = []) => [A('greet', W(i, 0), { seconds: 1.2 }), A('clap', W(i, 2), { seconds: 1.1 }), A('cheer', W(i, 3)), ...after];
 
-const shot = (title, lf, lt, setting, actors, camera, lighting = day, so = null, eo = null) => ({ title, line_from: lf, line_to: lt, setting, actors, camera, lighting, start_override: so, end_override: eo });
+// Round 6: clean CUTS between shots (a dissolve showed two moving shots at once: 'the shots collapse'); iris only where a shot asks.
+const shot = (title, lf, lt, setting, actors, camera, lighting = day, so = null, eo = null) => ({ title, line_from: lf, line_to: lt, setting, actors, camera: { transition: 'cut', ...camera, ...(camera.transition === 'dissolve' ? { transition: 'cut' } : {}) }, lighting, start_override: so, end_override: eo });
 
 const shots = [
   // ===== Intro: one establishing shot of the whole playground =====
@@ -93,7 +94,7 @@ const shots = [
     mango([-2.0, 0, 0.7], { motion: { type: 'path', to: [2.9, 0, 0.5] }, look_at: undefined }), // just ahead: Mira chases him
   ], { preset: 'follow', size: 'full', target: 0, yaw: 0.8, height: -0.2 }, day),
   shot('Round the garden, zooming past! (merry-go-round, orbit)', 3, 3, pg(MERRY), onMerry(),
-    { preset: 'orbit', size: 'full', amount: 0.55, height: 0.1, target: 0 }, day),
+    { preset: 'group', size: 'full', yaw: 0.3, height: 0.1 }, day), // still camera: only the merry-go-round moves
 
   // ===== Chorus 1 =====
   shot('Chorus 1 · seesaw: slow and fast, up and down (side-on)', 4, 4, seesawAt(4)(pg), onSeesaw(2.4, seesawOff(4)),
@@ -154,7 +155,7 @@ const shots = [
   shot('Chorus 3 · Candy Garden · seesaw (crane down)', 20, 20, seesawAt(20)(cg), onSeesaw(2.4, seesawOff(20)),
     { preset: 'crane', size: 'full', transition: 'iris', yaw: 0.3 }, day),
   shot('Chorus 3 · merry-go-round: spin around! (orbit)', 21, 21, cg(MERRY), onMerry(),
-    { preset: 'orbit', size: 'full', amount: 0.6, height: -0.2, target: 0 }, day),
+    { preset: 'group', size: 'full', yaw: -0.25, height: -0.2 }, day), // still camera: only the merry-go-round moves
   shot('Chorus 3 · close-up: yes and no, hello, goodbye (candy bokeh)', 22, 22, cg(), [
     mira(M0, { actions: yesNoMira(22, 'left') }), mango(D0, { actions: yesNoMango(22) }),
   ], { preset: 'group', size: 'full', target: 0, yaw: -0.2 }, day),
@@ -219,10 +220,10 @@ const shots = [
     mira([-0.6, 0, 1.2], { actions: [A('kickBall', 0.5), A('cheer', 2.3), A('dance', 3.6, { seconds: 3.0 }), A('twirl', 6.8)] }),
     mango([0.9, 0, 1.6], { actions: [A('jumpCatch', 1.25), A('rollOver', 3.8), A('excitedHop', 6.8)] }),
     ball([-0.3, 0, 1.75], { motion: { type: 'bounce', to: [0.55, 0, 2.3], hops: 3, height: 0.45, start: 0.72 } }), // kicked at 0.72 s: real arcs, lower each bounce, then rolls
-  ], { preset: 'orbit', size: 'full', amount: 0.6, height: -0.2 }, sunset, en(39) + 0.6, st(40)),
+  ], { preset: 'group', size: 'full', yaw: 0.1, height: -0.2 }, sunset, en(39) + 0.6, st(40)),
 
   // ===== Slow chorus: gentle =====
-  shot('Slow chorus · a gentle swing (push in)', 40, 41, pg({ ...SWING, period: 3.4, amplitude: 18 }), onSwing(3.4),
+  shot('Slow chorus · a gentle swing (push in)', 40, 41, pg({ ...SWING, period: 3.8, amplitude: 15 }), onSwing(3.8),
     { preset: 'dolly-in', size: 'wide', yaw: 0.4, height: -0.1, transition: 'dissolve' }, sunset),
   shot('Slow chorus · close-up: hello, goodbye', 42, 42, pg(), [
     mira(M0, { actions: yesNoMira(42) }), mango(D0, { actions: yesNoMango(42) }),
@@ -240,8 +241,8 @@ const shots = [
   // ===== Final chorus =====
   shot('Final chorus · seesaw: up and down (front, low)', 44, 44, seesawAt(44)(pg), onSeesaw(2.4, seesawOff(44)),
     { preset: 'group', size: 'full', yaw: 0.15, height: -0.7, transition: 'dissolve' }, sunset),
-  shot('Final chorus · merry-go-round: spin around!', 45, 45, pg({ ...MERRY, speed: 0.5 }), onMerry(),
-    { preset: 'orbit', size: 'full', amount: 0.8, height: -0.3, target: 0 }, sunset),
+  shot('Final chorus · merry-go-round: spin around!', 45, 45, pg(MERRY), onMerry(),
+    { preset: 'group', size: 'full', yaw: 0.2, height: -0.3 }, sunset), // still camera: only the merry-go-round moves
   shot('Final chorus · yes and no, hello, goodbye (two-shot)', 46, 46, pg(), [
     mira(M0, { actions: yesNoMira(46) }), mango(D0, { actions: yesNoMango(46) }),
   ], { preset: 'group', size: 'medium', yaw: 0.25 }, sunset),

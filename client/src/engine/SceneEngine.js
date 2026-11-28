@@ -7,7 +7,7 @@ import { loadGLTF, measureBox } from './three-common.js';
 import { analyseRig, buildClip, MOVES } from './MoveMaker.js';
 import { addFace, vocalEnvelope, mouthOpen, mouthShape } from './FaceRig.js';
 import { buildLandscape, blobShadowTexture, lookOf, SKY } from './Landscape.js';
-import { buildEquipment } from './Playground.js';
+import { buildEquipment, beachBall } from './Playground.js';
 import { buildHome } from './Home.js';
 
 /** Shot start/end times from lyric timestamps (Stage 3). Gaps (instrumental breaks) belong to the shot before. */
@@ -403,6 +403,8 @@ export class SceneEngine {
       }
       const actors = [];
       for (const a of s.actors || []) {
+        // A prop built by the studio instead of a Meshy model (round 6: a bright rainbow beach ball).
+        if (a.procedural === 'beachball') { actors.push(this._wrap(group, beachBall(), a, null, 0, 'prop')); continue; }
         const asset = byCard[a.card_id];
         if (!asset) { this.warnings.push(`Shot “${s.title}”: an asset is no longer approved in Stage 2.`); continue; }
         const g = await loadGLTF(asset.model_url).catch(() => null);
@@ -446,7 +448,7 @@ export class SceneEngine {
       const standing = actors.filter((x) => !x.sky);
       const focusY = standing.length ? standing.reduce((t, x) => t + surface(x.actor.pos?.[0] || 0, x.actor.pos?.[2] || 0), 0) / standing.length : surface(0, 0.5);
       for (const x of actors) if (x.sky) x.skyBase = Math.max(focusY, surface(x.actor.pos?.[0] || 0, x.actor.pos?.[2] || 0));
-      actors.forEach((x) => { x.name = byCard[x.actor.card_id]?.name || ''; });
+      actors.forEach((x) => { x.name = byCard[x.actor.card_id]?.name || (x.actor.procedural === 'beachball' ? 'Beach ball' : ''); });
       // Contact shadows: a soft dark patch under everything standing, so nothing looks like it floats.
       for (const x of actors) {
         if (x.sky) continue;
@@ -540,14 +542,17 @@ export class SceneEngine {
       const params = {};
       // Every performance is a little different: energy, tempo and (for waves) the number of waves vary per character and shot.
       const vk = 20 + body.actions.length * 7;
-      params.energy = 0.86 + 0.28 * rnd(vk);
-      if (act.move === 'wave') params.waves = 2 + Math.floor(rnd(vk + 1) * 3);
+      params.energy = 0.82 + 0.12 * rnd(vk); // soft and polite (round 6): never bigger than the designed move
       // Rides (hold) keep their exact length so the body stays in step with the equipment; short gestures vary a little.
       if (act.seconds) { const one = Number(act.seconds) / Math.max(1, Number(act.repeats || 1)); params.seconds = act.hold || act.exact ? one : one * (0.95 + 0.1 * rnd(vk + 2)); }
       if (act.repeats) params.repeats = Number(act.repeats);
       if (act.hand) { params.hand = act.hand; params.side = act.hand; }
       // Every other setting the move understands (jump height, crouch, nods, tugs, claps…) — these were silently dropped.
-      for (const k of Object.keys(MOVES[act.move].params || {})) if (!['seconds', 'repeats', 'hand'].includes(k) && act[k] != null) params[k] = act[k]; if (act.base) params.base = act.base; // a gesture on a posture (kneel / sit / lie), Project 07
+      for (const k of Object.keys(MOVES[act.move].params || {})) if (!['seconds', 'repeats', 'hand'].includes(k) && act[k] != null) params[k] = act[k];
+      // Calm tempo (round 6: "too fast for toddlers to follow"): each wave / shake / nod / clap takes at least this long,
+      // so a short action does FEWER, slower movements instead of squeezing several in.
+      const CALM = { wave: ['waves', 0.9], shake: ['shakes', 0.8], nod: ['nods', 0.7], clap: ['claps', 0.6] }[act.move];
+      if (CALM && act[CALM[0]] == null) { const sec = params.seconds ?? MOVES[act.move].params?.seconds?.value ?? 1.5; params[CALM[0]] = Math.max(1, Math.min(3, Math.round(sec / CALM[1]))); } if (act.base) params.base = act.base; // a gesture on a posture (kneel / sit / lie), Project 07
       const clip = buildClip(rig, act.move, params, act.move);
       const action = mixer.clipAction(clip); action.play(); action.setEffectiveWeight(0);
       body.actions.push({ action, at: Math.max(0, Number(act.at || 0)), dur: clip.duration, move: act.move, hold: !!act.hold, offset: Math.max(0, Number(act.offset || 0)) });

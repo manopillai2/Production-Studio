@@ -174,7 +174,7 @@ export const MOVES = {
       const up = { [`${s}ArmUp`]: 72, [`${s}Arm`]: [-32], [`${s}Fore`]: [-42, 0, 0], head: [0, 0, -6 * m], spine: [0, 0, -4 * m] };
       const keys = [{ t: 0, pose: {} }, { t: 0.15, pose: up }];
       const n = Math.round(waves) * 2;
-      for (let i = 0; i < n; i++) keys.push({ t: 0.2 + (0.6 * (i + 1)) / n, pose: { ...up, [`${s}Fore`]: [-42, 0, (i % 2 ? -1 : 1) * 26 * m], [`${s}Hand`]: [0, 0, (i % 2 ? -1 : 1) * 14 * m] } });
+      for (let i = 0; i < n; i++) keys.push({ t: 0.2 + (0.6 * (i + 1)) / n, pose: { ...up, [`${s}Fore`]: [-42, 0, (i % 2 ? -1 : 1) * 17 * m], [`${s}Hand`]: [0, 0, (i % 2 ? -1 : 1) * 8 * m] } }); // a soft, slow wave
       keys.push({ t: 0.88, pose: up }, { t: 1, pose: {} });
       return { seconds, keys };
     },
@@ -214,7 +214,7 @@ export const MOVES = {
   },
   shake: {
     label: 'Shake head (no)', icon: '🙅', words: ['no', 'shake', 'disagree'], biped: false,
-    params: { shakes: { label: 'Shakes', min: 1, max: 6, step: 1, value: 3 }, amount: { label: 'Amount', min: 10, max: 50, step: 1, value: 28 }, seconds: { label: 'Length (s)', min: 0.6, max: 4, step: 0.1, value: 1.5 }, repeats: { label: 'Repeat', min: 1, max: 4, step: 1, value: 1 } },
+    params: { shakes: { label: 'Shakes', min: 1, max: 6, step: 1, value: 2 }, amount: { label: 'Amount', min: 10, max: 50, step: 1, value: 20 }, seconds: { label: 'Length (s)', min: 0.6, max: 4, step: 0.1, value: 1.5 }, repeats: { label: 'Repeat', min: 1, max: 4, step: 1, value: 1 } },
     make: ({ shakes, amount, seconds }) => {
       const keys = [{ t: 0, pose: {} }]; const n = Math.round(shakes) * 2;
       for (let i = 0; i < n; i++) keys.push({ t: (i + 1) / (n + 1), pose: { head: [0, (i % 2 ? -1 : 1) * amount], neck: [0, (i % 2 ? -1 : 1) * amount * 0.3] } });
@@ -630,7 +630,7 @@ export const MOVES = {
     make: ({ seconds, low }) => {
       // Down: knees bend to push off the ground. Up: legs stretch, arms lift a little, head up: "wheee!"
       const down = { ...STRADDLE(1.15), spine: [14], head: [6] }; // knees bend to push off
-      const up = { ...STRADDLE(0.75), armUp: -26, arms: [-62, -8], fores: [-18], spine: [-10], head: [-14] }; // legs stretch, arms lift: wheee
+      const up = { ...STRADDLE(0.85), armUp: -42, arms: [-55, -9], fores: [-30], spine: [-6], head: [-9] }; // legs stretch a little, a gentle lift
       const [a, b] = low === 'no' ? [up, down] : [down, up]; const mid = STRADDLE();
       return { seconds, keys: [{ t: 0, pose: mid }, { t: 0.25, pose: a }, { t: 0.5, pose: mid }, { t: 0.75, pose: b }, { t: 1, pose: mid }] };
     },
@@ -641,8 +641,9 @@ export const MOVES = {
     make: ({ seconds }) => {
       // Hands up on the chains. Going back: legs tuck, lean forward. Going forward: legs stretch out, lean back.
       const hold = { armUp: 62, arms: [-22, 0], fores: [-62] }; // hands up on the chains, at the sides
-      const back = { ...SIT(), ...hold, legs: [-74, 98], spine: [12], head: [4] }; // tuck: shins go under the seat, below its board
-      const front = { ...SIT(), ...hold, legs: [-95, 15], spine: [-14], head: [-12] };
+      // Round 6: calm and easy to follow: the hands stay on the chains, the legs swing gently (no big kicks or tucks).
+      const back = { ...SIT(), ...hold, legs: [-80, 92], spine: [5], head: [2] };
+      const front = { ...SIT(), ...hold, legs: [-86, 62], spine: [-6], head: [-5] };
       const mid = { ...SIT(), ...hold };
       return { seconds, keys: [{ t: 0, pose: mid }, { t: 0.25, pose: back }, { t: 0.5, pose: mid }, { t: 0.75, pose: front }, { t: 1, pose: mid }] };
     },
