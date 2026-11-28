@@ -277,15 +277,24 @@ function findFace(obj, head) {
   // the cover over the painted smile must match THIS skin, not the forehead's.
   const mouthSkin = (() => {
     const out = []; const w = mouth.w;
-    for (let a = 0; a < 24; a++) for (const r of [0.95, 1.15, 1.35]) {
-      const hit = cast(mouth.x + Math.cos((a / 24) * Math.PI * 2) * r * w, mouth.y + 0.12 * w + Math.sin((a / 24) * Math.PI * 2) * r * 0.75 * w);
+    // Only beside and above the mouth (cheeks, upper lip): below it, a toddler's short chin ends within a few cm and the
+    // ring landed on his yellow T-shirt collar, so the cover came out yellow (Project 07, Leo). Samples far from the
+    // face's own skin colour (clothes, hair, background) are left out as well.
+    for (let a = 0; a < 24; a++) for (const r of [1.15, 1.4, 1.65]) { // beyond the smile groove's baked shadow
+      const ang = (a / 24) * Math.PI * 2; if (Math.sin(ang) < -0.3) continue;
+      const hit = cast(mouth.x + Math.cos(ang) * r * w, mouth.y + 0.12 * w + Math.sin(ang) * r * 0.75 * w);
       if (hit) out.push(colourAt(hit));
     }
     if (out.length < 8) return null;
-    const L0 = median(out.map(lum));
-    const ok = out.filter((c) => lum(c) > L0 * 0.7 && !(c[0] > c[1] * 2.2 && c[0] > c[2] * 2.2));
-    const src = ok.length >= 6 ? ok : out;
-    return [0, 1, 2].map((k) => median(src.map((c) => c[k])));
+    const near = out.filter((c) => Math.hypot(c[0] - skin[0], c[1] - skin[1], c[2] - skin[2]) < 0.22);
+    const pool = near.length >= 6 ? near : out;
+    const L0 = median(pool.map(lum));
+    const ok = pool.filter((c) => lum(c) > L0 * 0.7 && !(c[0] > c[1] * 2.2 && c[0] > c[2] * 2.2));
+    const src = (ok.length >= 6 ? ok : pool).slice().sort((p, q) => lum(p) - lum(q));
+    // the brighter half (50th–85th percentile): Meshy bakes shadow into the skin near the carved smile, and a plain median
+    // gave a darker, duller cover that read as an olive patch on Mommy's lit cheeks (Project 07)
+    const band = src.slice(Math.floor(src.length * 0.5), Math.max(Math.floor(src.length * 0.5) + 1, Math.ceil(src.length * 0.85)));
+    return [0, 1, 2].map((k) => band.reduce((t, c) => t + c[k], 0) / band.length);
   })();
   // Skin colour around the eyes (for the blinking lids): a ring around each eye, dark marks (brows, lashes, hair) left out.
   const eyeSkin = (() => {
@@ -582,6 +591,11 @@ function mouthLayer(obj, head, m, canvasTex, { box = MP, smooth = true, push = 0
         sub.setAttribute('position', new THREE.BufferAttribute(P, 3));
         const N0 = g.attributes.normal; if (N0) sub.setAttribute('normal', N0.clone()); // its OWN copy: computing normals must not touch the face's
         sub.computeVertexNormals(); const N = sub.attributes.normal;
+        // Weld: Meshy splits vertices along its many texture seams, so each copy of a point only saw its own triangles and
+        // the layer shaded in patches (a dark, mottled "beard" on Mommy, Project 07). Copies at the same place share one normal.
+        { const key = (i) => `${Math.round(P[i * 3] * 1e4)},${Math.round(P[i * 3 + 1] * 1e4)},${Math.round(P[i * 3 + 2] * 1e4)}`; const acc = new Map();
+          for (const i of moved) { const k = key(i); const v = acc.get(k) || [0, 0, 0]; v[0] += N.getX(i); v[1] += N.getY(i); v[2] += N.getZ(i); acc.set(k, v); }
+          for (const i of moved) { const v = acc.get(key(i)); const l = Math.hypot(v[0], v[1], v[2]) || 1; N.setXYZ(i, v[0] / l, v[1] / l, v[2] / l); } }
         if (N0) for (let i = 0; i < n; i++) if (!moved.has(i)) N.setXYZ(i, N0.getX(i), N0.getY(i), N0.getZ(i)); // keep the face's own shading at the edges
       }
     }
