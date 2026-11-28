@@ -1,6 +1,6 @@
 # Work in progress — read this first after any interruption
 
-Last updated: 2026-11-28 (Claude, during Project 06 round 5)
+Last updated: 2026-11-28, before the final render (Claude, Project 06 round 5)
 
 ## Current task
 **Project 06 (episode id 17) — round 5 fixes from the user's screenshots** (`screenshots/`), then a final 1080p render and a review of the finished video.
@@ -28,16 +28,20 @@ The user asked to fix everything in the screenshots, match every shot's action t
 - **New projects:** the kids-first rules are in Claude's director prompt; the move catalog has the Project 06 moves; finger bones for new two-legged characters.
 
 ## In progress (resume here)
-1. A gentle leg solver for rides (`Clearance.js` `clearLegs(..., 'gentle')`, called by default in `SceneEngine._poseActors`). Last clearance run: 10 of 12 ride shots still have 2–4 cm calf contact with the swing seat, plus Mango's tail tip and hock grazing by 2–4 cm.
-   - Next: visually judge, or fix by geometry (seat edge), then run the full clearance check.
-2. A full contact sheet of all 52 shots (`tools/testing/shots.mjs 17 <dir> 0.55`), then review it.
-3. **Final render:** close Edge, Teams and Phone Link, then start it as a detached process:
-   `Start-Process node -ArgumentList "export.mjs","17","<dir>","1080p" -WorkingDirectory tools/testing` (with env GPU=1).
-   Watch progress via `storage/tmp/render-<id>` (6,371 frames).
-4. Review the finished MP4: a frame every 3 s plus the singing and blink runs. Then update `docs/project-06/EXECUTION-LOG.md`, `docs/LEARNINGS.md` and this file, and commit. Pushing is blocked by the safety check, so the user runs `! git push`.
+1. DONE: the gentle leg solver and seat refits. The remaining 2–4 cm readings are resting contact (checked in the shots).
+2. **NOW: the final 1080p render of Project 06** (started 2026-11-28 as a detached process, output in `scratchpad/exp5`). If interrupted: check `storage/media/exports/episode-17/` for a new folder; if there isn't one, restart the server (message the Project 07 session `production-studio-6a` first), close Edge, Teams and Phone Link, and re-run export.mjs detached.
+3. Then: review the finished MP4 (a frame every 3 s, singing and blink runs, kite, ball, seesaw on "up"/"down"); update `EXECUTION-LOG.md` (round 5) and `LEARNINGS.md`; commit; tell the Project 07 session "export done"; tell the user (push with `! git push`).
+
+Another Claude session (`production-studio-6a`, Project 07 "My Little Home") works in this repo too. Coordinate server restarts and `client/dist` builds with it via SendMessage.
 
 ## How to resume
 - The server: `node src/index.js` in `server/` (port 5175 serves `client/dist`; rebuild with `npx vite build` in `client/`).
 - Re-apply the direction: `node docs/project-06/direction.mjs`.
 - Tools: `tools/testing/clearance.mjs`, `peek.mjs` (`{face: 0}`, `{actor: i}`), `shots.mjs`, `export.mjs`.
 - The user's preferences: kids-first direction; nothing through anything; update learnings and logs continuously; close unneeded apps; no new Meshy calls for Project 06.
+
+---
+# Project 07 "My Little Home" (episode id 18): a separate session's work
+**Resume from `docs/project-07/RESUME.md`** (fixed facts, done, ordered next steps). Log: `docs/project-07/EXECUTION-LOG.md`.
+- Meshy is finished: 18 calls / 247 credits used of the approved 25 / 324. No more Meshy calls without asking the user.
+- Shared machine: the Project 06 session uses the same server (port 5175) and `client/dist`. Don't restart the server, rebuild dist or kill node/chrome during the other project's export; message that session first.

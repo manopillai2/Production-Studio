@@ -393,6 +393,9 @@ The user reviewed the round 4 video and saved screenshots in `screenshots/`. Eac
 | Ball sinking into the ground while rolling | Props have their origin at the bottom, so spinning about it swung the ball through the floor. | Roll about the centre: compensate the position for the spin. **Check where a model's origin is before rotating it.** | Fixed and seen |
 | Preview never loaded after a small edit | A scripted edit added a `//` comment in the MIDDLE of a line, commenting out the code after it. The syntax check passed, but it failed at runtime. | Put comments on their own line in scripted edits; after any engine edit, render one frame (not just `node --check`). | Fixed |
 
+| Last 2–4 cm seat contacts after the refit | The back of the knee resting on the swing seat's front edge; Mango's tail tip and hock resting on his seat. | A GENTLE solver (only a small outward leg swing, at most ~17°, found continuously) plus equipment sized to the body. Judged at normal shot size: it reads as resting ON the seat, not through it. **Contact is fine; passing through is not. Look at it as the viewer sees it.** | Checked in the shots |
+| Two Claude sessions in one repo | A Project 07 session was editing the same engine files and restarting the same server, and one commit swept in the other's unfinished work. | Check `ListAgents` before restarting the server or rebuilding the client; message the peer with which files you're editing and when an export runs. | Coordinated |
+
 General lessons from this round:
 - **Review the finished video the way the user does:** full frames at normal size, every shot, against the lyric. Close-up checks alone missed the medium-shot mouth, the blur on Mango and the hidden wave.
 - **An automatic "fixer" can create worse problems than the one it fixes.** Always compare with and without it before keeping it.

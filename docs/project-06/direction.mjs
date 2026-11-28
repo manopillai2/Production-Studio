@@ -65,7 +65,7 @@ const onMerry = () => [
   mango([-0.8, 0, 0.3], { ride: { equip: 0, seat: 'b', lift: 0.02, back: 0.3 }, actions: [hold('dogSit', 30)] }),
 ];
 const slideRun = (climbAt = 0) => mira([0, 0, -1.4], { ride: { equip: 0, seat: 'top', climb: { at: climbAt, dur: 1.8 }, at: climbAt + 2.3, dur: 1.4, off_after: 0.4 },
-  actions: [A('climb', climbAt, { seconds: 0.6, repeats: 3 }), A('slideRide', climbAt + 1.55, { seconds: 2.9 }), A('cheer', climbAt + 4.9)] });
+  actions: [A('climb', climbAt, { seconds: 0.6, repeats: 3 }), A('slideRide', climbAt + 1.42, { seconds: 3.0 }), A('cheer', climbAt + 4.9)] });
 // standing marks, centre stage (two-shots)
 const M0 = [-0.42, 0, 1.3], D0 = [0.6, 0, 1.6]; // an arm's length apart: gestures never reach into each other
 // "Yes and no, hello, goodbye": nod on "yes", shake on "no", wave from "hello" through "goodbye".
