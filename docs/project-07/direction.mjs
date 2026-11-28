@@ -67,7 +67,7 @@ const shot = (title, lf, lt, so, eo, equipment, actors, camera, lighting) => sho
 const rel = (t, s0) => +(t - s0).toFixed(2);
 
 // ======================= LIVING ROOM =======================
-const M_L = [0.9, 0, -1.4], K_L = [0.05, 0, -0.9];
+const M_L = [0.95, 0, -1.2], K_L = [0.0, 0, -1.2]; // level with each other: both faces show (each turned a little to the camera)
 { const s0 = 0; // Intro: the warm living room; Leo toddles in to Mommy
   shot('Intro · morning in the living room, Leo runs to Mommy', 0, 0, s0, st(0), [ROOM('living'), TV()], [
     ...livingProps(),
@@ -77,15 +77,15 @@ const M_L = [0.9, 0, -1.4], K_L = [0.05, 0, -0.9];
 { const s0 = st(0); // "Mommy, Mommy, what is this?" — he looks up at her, tugs, then points at the sofa
   shot('Mommy, Mommy, what is this? (Leo asks, points at the sofa)', 0, 0, s0, st(1), [ROOM('living'), TV()], [
     ...livingProps(false),
-    mommy(M_L, { rot: [0, yawTo(M_L, K_L), 0], look_at: 2 }),
-    leo(K_L, { rot: [0, yawTo(K_L, M_L), 0], actions: [A('greet', rel(wt(0, 0), s0), { seconds: 1.6 }), A('point', rel(wt(0, 2), s0) - 0.1, { points: 2, seconds: 2.2, height: 'low', hand: 'right' })] }),
-  ], { preset: 'group', size: 'full', yaw: -0.25, height: -0.4, include: [[-0.6, 0.9, -3.25]] }, morning); }
+    mommy(M_L, { rot: [0, -1.25, 0], look_at: 2 }),
+    leo(K_L, { rot: [0, 1.25, 0], actions: [A('greet', rel(wt(0, 0), s0), { seconds: 1.6 }), A('point', rel(wt(0, 2), s0) - 0.1, { points: 2, seconds: 2.2, height: 'low', hand: 'right' })] }),
+  ], { preset: 'group', size: 'full', yaw: 0, height: -0.4, include: [[-0.6, 0.9, -3.25]] }, morning); }
 { const s0 = st(1); // "Tell me, tell me, what is this?" — two little hops on "tell me", a head tilt
   shot('Tell me, tell me, what is this? (Leo bounces, Mommy smiles)', 1, 1, s0, st(2), [ROOM('living'), TV()], [
     ...livingProps(false),
-    mommy(M_L, { rot: [0, yawTo(M_L, K_L), 0], look_at: 2, actions: [A('nod', rel(wt(1, 4), s0), { nods: 2, amount: 12, seconds: 1.4 })] }),
-    leo(K_L, { rot: [0, yawTo(K_L, M_L), 0], look_at: 1, actions: [A('hop', rel(wt(1, 0), s0) - 0.1, { height: 0.06, seconds: 0.55, repeats: 1 }), A('hop', rel(wt(1, 2), s0) - 0.1, { height: 0.06, seconds: 0.55 }), A('nod', rel(wt(1, 4), s0), { nods: 1, amount: 10, seconds: 1.2 })] }),
-  ], { preset: 'dolly-in', size: 'full', yaw: 0.35, height: -0.6, target: 2 }, morning); }
+    mommy(M_L, { rot: [0, -1.25, 0], look_at: 2, actions: [A('nod', rel(wt(1, 4), s0), { nods: 2, amount: 12, seconds: 1.4 })] }),
+    leo(K_L, { rot: [0, 1.25, 0], look_at: 1, actions: [A('hop', rel(wt(1, 0), s0) - 0.1, { height: 0.06, seconds: 0.55, repeats: 1 }), A('hop', rel(wt(1, 2), s0) - 0.1, { height: 0.06, seconds: 0.55 }), A('nod', rel(wt(1, 4), s0), { nods: 1, amount: 10, seconds: 1.2 })] }),
+  ], { preset: 'dolly-in', size: 'full', yaw: 0.1, height: -0.5 }, morning); }
 
 // ---- Learning 1: SOFA ----
 const M_S = [0.75, 0, -1.9], K_S = [-1.65, 0, -1.55];

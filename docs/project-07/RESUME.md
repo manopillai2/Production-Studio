@@ -1,6 +1,19 @@
 # Project 07 — RESUME HERE (keep this file current; read it first after any interruption)
 
-Last updated: 2026-11-27, during Stage 2 (assets) and Stage 3 (song timing).
+Last updated: 2026-11-28 ~00:00, during Stage 4/5 test renders.
+
+## NOW (read this first)
+- **Usage limit:** the user's standing instruction is to pause at the 5-hour limit and continue when it resets. `.claude/settings.json` has `autoContinueAtUsageLimit: true`; a SessionStart hook prints `docs/WORK-IN-PROGRESS.md`; a 30-minute cron (job f52c116d) re-checks this file. The cron lasts only while the session is open: **re-create it in a new session.**
+- **Paused for the Project 06 export** (started ~23:55). No renders, builds, server restarts or process kills until that session sends "export done" (or no `export.mjs 17` process is left).
+- The clearance run was stopped for it and has **no results yet**: run it again, in the background:
+  `GPU=1 STEP=0.25 node tools/testing/clearance.mjs 18 <outDir>` (takes over 10 minutes).
+- Built and applied: calm direction (clean cuts, still camera on spin and dance, slow shivers), level two-shots for the opening, glowing ceiling. After the export: render the contact sheet again.
+- Seen on the last contact sheet, still to fix:
+  1. intro and end card: the camera looks over the walls;
+  2. kitchen establishing shot: camera too far back, the room's edge shows below the floor;
+  3. bed shots: the footboard hides Leo (pat and lying down); try turning the bed or a higher, side camera;
+  4. TV shots: the TV is cut at the frame edge.
+- Then: face close-ups and blinks, 1080p export, review the MP4, 4K, final report, LEARNINGS, commit.
 
 ## Fixed facts
 - Episode id **18**, project number 7, approved lyrics id **28**. Server: `http://localhost:5175`. Restart it with `Start-Process node src/index.js` in `server/`.
