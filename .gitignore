@@ -18,3 +18,6 @@ docs/project-*/music/tts/*.f32
 storage/media/exports/episode-16/2026-11-27T14-49-38-1080p/*.mp4
 storage/media/exports/episode-16/2026-11-27T16-18-00-1080p/*.mp4
 storage/media/exports/episode-17/*/*.mp4
+
+# Claude Code session lock files
+**/.claude/scheduled_tasks.lock

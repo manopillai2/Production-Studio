@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo \"WORK IN PROGRESS (from docs/WORK-IN-PROGRESS.md) - continue from here:\"; cat \"$CLAUDE_PROJECT_DIR/../docs/WORK-IN-PROGRESS.md\" 2>/dev/null || true",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
