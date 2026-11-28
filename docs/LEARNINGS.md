@@ -222,6 +222,25 @@ Implementation lessons:
 7. **Look at frames**: faces (mouth on the face), the river and houses visible, captions in sync.
 8. **Export 1080p** with GPU and run the checks in section 9.
 9. **Log everything** in `docs/project-XX/EXECUTION-LOG.md`, then set the status to Awaiting User Review.
+10. **Kids-first direction** (Project 06):
+    - one action per shot, timed to the word;
+    - at most three things to follow, and only the props the lyric needs;
+    - the named object fully in frame;
+    - gestures in medium or full shots;
+    - characters face what they play with;
+    - an arm's length apart;
+    - landscape detail `focus`.
+
+    These rules are also in the World Style and the Claude director prompt.
+11. **Before export:**
+    - `tools/testing/clearance.mjs` (nothing through anything);
+    - a contact sheet (`shots.mjs`);
+    - face close-ups AND medium shots (`peek.mjs` with `{face: 0}`);
+    - blinks (`__forceBlink`).
+12. **After export:** review the MP4 itself (frames from every shot at full size, singing and blink runs), the way the user does.
+13. **Render** as a detached process (`Start-Process node export.mjs …`) with Edge, Teams and Phone Link closed.
+14. **New characters:** separated fingers in the preview image (Meshy adds finger bones), a small painted closed mouth, and arms and legs clear of the body.
+15. **Update LEARNINGS.md the moment** a cause is found or a fix is verified, and commit it with the code.
 
 ## 13. Round 3 lessons: making movement and singing feel real
 

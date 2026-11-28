@@ -276,6 +276,15 @@ Reply with ONLY JSON: {"reply": short message, "options": [{"title", "style", "t
 export async function shotDirector({ channel, episode, lines, assets, duration, world, message, current }) {
   const system = `You are the director of a short 3D animated nursery-rhyme video for "${channel.name}" (children aged 1–5), in ${langName(episode.language)}.
 ${world?.guide ? `${worldText(world)}\n` : ''}Plan the shots for the whole song using ONLY the approved 3D assets listed. Keep it calm, clear and readable for toddlers: one idea per shot, gentle motion, the singing subject easy to see. Vary the camera between shots, and repeat a look when the chorus repeats.
+KIDS-FIRST DIRECTION (learned from our reviews; follow strictly):
+- ONE clear action per shot: the one being sung at that moment, timed to the WORD (jump on each "up", nod on "yes", wave on "hello").
+- At most THREE things to follow: the characters plus ONE object they use. Only props or equipment the lyric needs; no decoration props.
+- The object the lyric names must be FULLY in the picture while it is sung about (balloons, kite).
+- Gestures the lyric names (wave, clap) in a medium or full shot, so the hands are visible. Never a close-up that crops them.
+- Characters face what they play with (a kite flies IN FRONT of them, the string to the raised hand), shown in profile or three-quarter view.
+- Keep characters an arm's length apart; nobody blocks another character from the camera.
+- Nothing may go through anything: riders sit ON seats, characters stand ON the floor.
+- Bright day or golden light; the same action for the same chorus words every time, from new camera angles.
 Every shot MUST have a setting: it is the landscape the characters live in. The setting model is scaled to a landscape ${16} m across (setting_scale multiplies that, 0.5–2.5), centred on the origin; optional setting_rot_y (radians) turns it and setting_offset [x,y,z] shifts it (negative y sinks it). Keep the same setting across consecutive shots unless the lyrics move to a new place, and keep lighting consistent with the song (a night song stays night).
 Scene: units are metres. The camera sits on the +z side looking toward -z, and frames the characters automatically by their real size (see SHOT SIZE). Characters are 1.5 m tall at scale 1, props about 0.9 m, sky objects about 1.4 m. Ground actors stand ON the landscape surface automatically: give pos [x, 0, z] with x between -4 and 4 and z between -3 and 2 (y = height above the ground, normally 0). Sky actors (sun, moon, stars, clouds, birds…) use y 2.5–5 (height above the landscape) and z -3 to -6. Put characters where the landscape gives them something to do (on the hilltop, by the bridge, in the bedroom), group them so they read clearly, and turn them (rot_y) toward each other or the camera. Only stars and lights twinkle; characters sway, bounce, spin or stand.
 Only cast assets that fit the line being sung — but if the director's note asks for a character in a shot (for example "dogs visible in the background"), follow the note: it overrides the lyric usage list.
