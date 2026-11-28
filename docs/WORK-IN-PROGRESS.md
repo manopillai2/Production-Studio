@@ -34,6 +34,9 @@ User feedback on the round 5 video:
 - (c) Make the ball colourful, matching the props and landscape.
 - (d) Swing legs are still wrong in a later swing shot (the slow-chorus swing, around 2:14–2:23). Fix them in EVERY swing shot.
 
+FOUND (round 6): an action's `seconds` = TOTAL of all repeats. The direction passed one cycle, so rides ran 8–10× too fast and then ENDED (Mira stood up in the slow-chorus swing). Fixed in direction.mjs (`period × repeats`, skip, climb) and applied.
+Status: engine edits are built (Project 07 OK'd the build); direction applied. NEXT: re-check the swing/seesaw/slide clearance and the slow-chorus swing frames; check the gesture tempo, spin shots, ball and Mira's mouth; then export (message Project 07 first).
+
 Steps:
 1. Edit (no build yet; coordinate with Project 07 first):
    - MoveMaker: wave, shake and nod slower and softer; swingRide with hands steady on the chains and a gentle leg swing;

@@ -53,19 +53,19 @@ const A = (move, at, extra = {}) => ({ move, at, ...extra });
 const seesawOff = (i, P = 2.4) => { const tUp = W(i, 4); return +((((0.75 * P - tUp) % P) + P) % P).toFixed(3); };
 const seesawAt = (i, P = 2.4, extra = {}) => (place) => place({ ...SEESAW, period: P, phase: seesawOff(i, P), ...extra });
 const onSeesaw = (period = 2.4, off = 0) => [
-  mira([-1.3, 0, 0.4], { ride: { equip: 0, seat: 'a' }, actions: [hold('seesawRide', period, { repeats: 10, offset: off })] }),
+  mira([-1.3, 0, 0.4], { ride: { equip: 0, seat: 'a' }, actions: [hold('seesawRide', period * 10, { repeats: 10, offset: off })] }), // seconds = TOTAL (period × repeats)
   mango([1.3, 0, 0.4], { ride: { equip: 0, seat: 'b', lift: 0.02 }, actions: [hold('dogSit', 30)] }),
 ];
 const onSwing = (period = 3.2) => [
-  mira([-0.62, 0, 0], { ride: { equip: 0, seat: 'a' }, actions: [hold('swingRide', period, { repeats: 8 })] }),
+  mira([-0.62, 0, 0], { ride: { equip: 0, seat: 'a' }, actions: [hold('swingRide', period * 12, { repeats: 12 })] }), // seconds = TOTAL: one gentle cycle per swing period
   mango([0.62, 0, 0], { ride: { equip: 0, seat: 'b', lift: 0.02 }, actions: [hold('dogSit', 30)] }),
 ];
 const onMerry = () => [
-  mira([0.8, 0, 0.3], { ride: { equip: 0, seat: 'a' }, actions: [hold('merryRide', 4, { repeats: 4 })] }),
+  mira([0.8, 0, 0.3], { ride: { equip: 0, seat: 'a' }, actions: [hold('merryRide', 4 * 5, { repeats: 5 })] }),
   mango([-0.8, 0, 0.3], { ride: { equip: 0, seat: 'b', lift: 0.02, back: 0.3 }, actions: [hold('dogSit', 30)] }),
 ];
 const slideRun = (climbAt = 0) => mira([0, 0, -1.4], { ride: { equip: 0, seat: 'top', climb: { at: climbAt, dur: 1.8 }, at: climbAt + 2.3, dur: 1.4, off_after: 0.4 },
-  actions: [A('climb', climbAt, { seconds: 0.6, repeats: 3 }), A('slideRide', climbAt + 1.42, { seconds: 3.0 }), A('cheer', climbAt + 4.9)] });
+  actions: [A('climb', climbAt, { seconds: 1.8, repeats: 3 }), A('slideRide', climbAt + 1.42, { seconds: 3.0 }), A('cheer', climbAt + 4.9)] });
 // standing marks, centre stage (two-shots)
 const M0 = [-0.42, 0, 1.3], D0 = [0.6, 0, 1.6]; // an arm's length apart: gestures never reach into each other
 // "Yes and no, hello, goodbye": nod on "yes", shake on "no", wave from "hello" through "goodbye".
@@ -234,7 +234,7 @@ const shots = [
     slideRun(0.3), mango([0.9, 0, 2.4], { actions: [A('excitedHop', 4.4), A('tailWag', 6.0)] }),
   ], { preset: 'group', size: 'wide', yaw: -1.15, height: 0.1 }, sunset, en(43), 161.0),
   shot('Instrumental · skipping together', 43, 43, pg(), [
-    mira([-2.3, 0, 1.6], { motion: { type: 'path', to: [1.2, 0, 1.2] }, actions: [A('skip', 0.1, { seconds: 0.62, repeats: 9 })] }),
+    mira([-2.3, 0, 1.6], { motion: { type: 'path', to: [1.2, 0, 1.2] }, actions: [A('skip', 0.1, { seconds: 0.62 * 9, repeats: 9 })] }),
     mango([-1.2, 0, 0.1], { motion: { type: 'path', to: [2.9, 0, -0.2] } }), // ahead and well behind her line: never hidden behind Mira
   ], { preset: 'follow', size: 'full', target: 0, yaw: 0.6, height: -0.3 }, sunset, 161.0, st(44)),
 
