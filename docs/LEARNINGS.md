@@ -193,6 +193,9 @@ Implementation lessons:
 - Debug hooks: `window.__sceneEngine.renderAt(t)` and `window.__scenePlayer.seek(t)`.
 - **A diagnostic script can break the thing it measures.** A check script killed the browser and aborted an export that was actually working.
 
+- **Editing JS through scripts:** an apostrophe inside a single-quoted JS string ("ball's") breaks the file, and shell heredocs can turn `
+` into real line breaks inside JS strings. After every scripted edit, run `node --check` or import the module (and build the client) before committing.
+
 ## 11. Costs and limits
 
 - **Meshy:**
